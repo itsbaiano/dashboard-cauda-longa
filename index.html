@@ -409,6 +409,12 @@
 
   .recalc-tag{display:inline-block; font-size:9px; font-weight:800; color:#a5690f; background:rgba(255,184,28,.16); padding:2px 8px; border-radius:20px; text-transform:uppercase; letter-spacing:.4px; vertical-align:2px; margin-left:6px;}
 
+  .file-field{display:flex; align-items:center; gap:8px;}
+  .file-field input[type=file]{flex:1; min-width:0;}
+  .file-clear{flex-shrink:0; font-size:11px; font-weight:700; color:var(--muted); background:#f1f5f9; border:1px solid var(--line); border-radius:8px; padding:5px 10px; cursor:pointer; transition:.15s; visibility:hidden;}
+  .file-clear:hover{background:rgba(245,54,74,.10); color:var(--accent-red); border-color:rgba(245,54,74,.3);}
+  .file-field.has-file .file-clear{visibility:visible;}
+
   @media (max-width:1100px){ .exec-grid{grid-template-columns:repeat(3,1fr);} }
   @media (max-width:700px){
     .exec-grid{grid-template-columns:repeat(2,1fr);}
@@ -467,28 +473,28 @@
       <p style="font-size:12.5px; color:var(--muted); margin-bottom:16px;">Envie as planilhas atualizadas. Você verá um resumo das mudanças antes de confirmar.</p>
       <div class="f-group" style="margin-bottom:6px;">
         <label>Desempenho Comercial e Elegibilidade</label>
-        <input type="file" id="fileMetaJunho" accept=".xlsx" style="font-size:12.5px;">
+        <div class="file-field"><input type="file" id="fileMetaJunho" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileMetaJunho" title="Remover arquivo">✕ remover</button></div>
       </div>
-      <div style="font-size:11.5px; color:var(--muted); margin-bottom:16px; line-height:1.5;"><i class=ic-bulb></i> Use seu relatório "NDI SP - Por Gestor" — atualiza os dois de uma vez, sem precisar de mais nada.</div>
+      <div style="font-size:11.5px; color:var(--muted); margin-bottom:16px; line-height:1.5;"><i class=ic-bulb></i> Use seu relatório "NDI SP - Por Gestor" — atualiza os dois de uma vez, sem precisar de mais nada. Pode arrastar qualquer planilha em qualquer campo: o sistema identifica o conteúdo sozinho.</div>
       <details style="margin-bottom:16px; border:1px solid var(--line); border-radius:8px; padding:10px 14px;">
         <summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:var(--blue);">Opções avançadas (uso ocasional)</summary>
         <div style="margin-top:14px;">
           <div class="f-group" style="margin-bottom:4px;">
             <label>Elegibilidade completa — só arquivo mestre da Hapvida</label>
-            <input type="file" id="fileElegibilidade" accept=".xlsx" style="font-size:12.5px;">
+            <div class="file-field"><input type="file" id="fileElegibilidade" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileElegibilidade" title="Remover arquivo">✕ remover</button></div>
           </div>
           <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">Ranking e histórico completo (18+ meses). Não precisa pro dia a dia.</div>
           <div class="f-group" style="margin-bottom:12px;">
             <label>Carteira / Gestores</label>
-            <input type="file" id="fileCarteira" accept=".xlsx" style="font-size:12.5px;">
+            <div class="file-field"><input type="file" id="fileCarteira" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileCarteira" title="Remover arquivo">✕ remover</button></div>
           </div>
           <div class="f-group" style="margin-bottom:12px;">
             <label>Pendências PME/SS</label>
-            <input type="file" id="filePendPme" accept=".xlsx" style="font-size:12.5px;">
+            <div class="file-field"><input type="file" id="filePendPme" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="filePendPme" title="Remover arquivo">✕ remover</button></div>
           </div>
           <div class="f-group" style="margin-bottom:4px;">
             <label>Pendências PF / Orçamentos</label>
-            <input type="file" id="filePendPf" accept=".xlsx" style="font-size:12.5px;">
+            <div class="file-field"><input type="file" id="filePendPf" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="filePendPf" title="Remover arquivo">✕ remover</button></div>
           </div>
         </div>
       </details>
@@ -3314,6 +3320,36 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     });
   }
 
+  // Botões "remover" + estado visual dos campos de arquivo
+  const IMPORT_FILE_IDS = ['fileMetaJunho','fileElegibilidade','fileCarteira','filePendPme','filePendPf'];
+  function syncFileFieldState(id){
+    const input = document.getElementById(id);
+    const field = input.closest('.file-field');
+    if (field) field.classList.toggle('has-file', input.files.length > 0);
+  }
+  IMPORT_FILE_IDS.forEach(id => {
+    const input = document.getElementById(id);
+    input.addEventListener('change', () => syncFileFieldState(id));
+  });
+  document.querySelectorAll('.file-clear').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      input.value = '';
+      syncFileFieldState(btn.dataset.target);
+    });
+  });
+
+  // Auto-detecção: identifica o tipo de cada planilha pelo conteúdo, não pelo campo.
+  // Assim, arquivo no campo errado ainda é roteado corretamente.
+  function detectWorkbookKind(wb){
+    const has = prefix => wb.SheetNames.some(n => n.toUpperCase().indexOf(prefix.toUpperCase()) === 0);
+    const hasExact = name => wb.SheetNames.some(n => n.toUpperCase().trim() === name.toUpperCase());
+    if (has('NDI SP - META')) return 'meta';
+    if (has('ELEGIBILIDADE') || hasExact('ELEGIBILIDADE')) return 'elig';
+    if (has('BASE') && !has('ELEGIBILIDADE')) return 'corretoras';
+    return 'unknown';
+  }
+
   function closeImportModal(){
     document.getElementById('importModalOverlay').style.display = 'none';
     document.getElementById('importSummary').style.display = 'none';
@@ -3325,6 +3361,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('fileCarteira').value = '';
     document.getElementById('filePendPme').value = '';
     document.getElementById('filePendPf').value = '';
+    IMPORT_FILE_IDS.forEach(id => { const f = document.getElementById(id).closest('.file-field'); if (f) f.classList.remove('has-file'); });
     pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null;
   }
 
@@ -3359,34 +3396,54 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null;
     let summaryHtml = '';
     try {
-      if (carteiraFile){
-        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Carteira...</p>';
-        const wb = await readFileAsWorkbook(carteiraFile);
-        pendingCarteira = parseCarteiraWorkbook(wb);
+      // ---- AUTO-DETECÇÃO: roteia cada arquivo pelo conteúdo, não pelo campo ----
+      const mainFiles = [];
+      if (metaFile) mainFiles.push(metaFile);
+      if (eligFile) mainFiles.push(eligFile);
+      if (carteiraFile) mainFiles.push(carteiraFile);
+
+      let metaWb = null, eligWb = null, corretorasWb = null, carteiraWb = null;
+      const naoReconhecidos = [];
+      for (const file of mainFiles){
+        statusEl.innerHTML = `<p style="font-size:12.5px;color:var(--muted);">Lendo ${file.name}...</p>`;
+        const wb = await readFileAsWorkbook(file);
+        const kind = detectWorkbookKind(wb);
+        if (kind === 'meta' && !metaWb){ metaWb = wb; }
+        else if (kind === 'elig' && !eligWb){ eligWb = wb; }
+        else if (kind === 'corretoras' && !corretorasWb){ corretorasWb = wb; carteiraWb = wb; }
+        else { naoReconhecidos.push(file.name); }
       }
-      if (metaFile){
-        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Desempenho Comercial...</p>';
-        const wb = await readFileAsWorkbook(metaFile);
-        if (findSheet(wb, 'NDI SP - META')){
-          pendingMeta = parseMetaJunhoWorkbook(wb);
-          summaryHtml += diffMetaJunho(pendingMeta);
-          pendingEligBridge = extractEligibilidadeDataFromExport(wb);
-          if (pendingEligBridge && window.getEligibilidadeData){
-            const codigosArquivo = new Set();
-            Object.values(pendingEligBridge).forEach(g => (g.corretoras||[]).forEach(c => codigosArquivo.add(c.c)));
-            const eligData = window.getEligibilidadeData();
-            const matchCount = eligData.filter(d => codigosArquivo.has(d.c)).length;
-            summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Elegibilidade — histórico do mês será gravado em <b>${matchCount}</b> das ${eligData.length} corretoras (Cauda Longa), direto pela planilha manual.</div>`;
-          }
-        } else {
-          pendingCorretorasRaw = parseCorretorasRawWorkbook(wb, pendingCarteira);
-          summaryHtml += diffCorretorasRaw(pendingCorretorasRaw);
+
+      // Tenta interpretar como Carteira o arquivo de corretoras (mesma estrutura)
+      if (carteiraWb){
+        try { pendingCarteira = parseCarteiraWorkbook(carteiraWb); } catch(e){ /* segue sem carteira */ }
+      }
+
+      if (naoReconhecidos.length && !metaWb && !eligWb && !corretorasWb){
+        throw new Error('Não reconheci o conteúdo de: ' + naoReconhecidos.join(', ') + '. Esperado o relatório "NDI SP - Por Gestor" (aba NDI SP - META) ou o arquivo mestre de Elegibilidade (aba ELEGIBILIDADE). Confira se anexou a planilha certa.');
+      }
+
+      if (metaWb){
+        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Processando Desempenho Comercial...</p>';
+        pendingMeta = parseMetaJunhoWorkbook(metaWb);
+        summaryHtml += diffMetaJunho(pendingMeta);
+        pendingEligBridge = extractEligibilidadeDataFromExport(metaWb);
+        if (pendingEligBridge && window.getEligibilidadeData){
+          const codigosArquivo = new Set();
+          Object.values(pendingEligBridge).forEach(g => (g.corretoras||[]).forEach(c => codigosArquivo.add(c.c)));
+          const eligData = window.getEligibilidadeData();
+          const matchCount = eligData.filter(d => codigosArquivo.has(d.c)).length;
+          summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Elegibilidade — histórico do mês será gravado em <b>${matchCount}</b> das ${eligData.length} corretoras (Cauda Longa), direto pela planilha manual.</div>`;
         }
       }
-      if (eligFile){
-        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Elegibilidade (pode levar alguns segundos)...</p>';
-        const wb = await readFileAsWorkbook(eligFile);
-        pendingElig = parseEligibilidadeWorkbook(wb);
+      if (corretorasWb && !metaWb){
+        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Processando Corretoras...</p>';
+        pendingCorretorasRaw = parseCorretorasRawWorkbook(corretorasWb, pendingCarteira);
+        summaryHtml += diffCorretorasRaw(pendingCorretorasRaw);
+      }
+      if (eligWb){
+        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Processando Elegibilidade (pode levar alguns segundos)...</p>';
+        pendingElig = parseEligibilidadeWorkbook(eligWb);
         summaryHtml += diffEligibilidade(pendingElig);
       }
       if (pendingCarteira){
