@@ -1157,9 +1157,9 @@
       </div>
       <div class="detail-stats">
         <div>Total 17 meses<b id="dTot">—</b></div>
-        <div>2TRI26 Atual<b id="dT2">—</b></div>
-        <div>Meta 2TRI26<b id="dMeta">—</b></div>
-        <div>Gap 2TRI26<b id="dGap">—</b></div>
+        <div><span id="dT2Label">2TRI26</span> Atual<b id="dT2">—</b></div>
+        <div>Meta <span id="dMetaLabel">2TRI26</span><b id="dMeta">—</b></div>
+        <div>Gap <span id="dGapLabel">2TRI26</span><b id="dGap">—</b></div>
         <div>Pico mensal<b id="dPico">—</b></div>
         <div>Últimos 3 meses<b id="dU3">—</b></div>
       </div>
@@ -2843,23 +2843,39 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if(!d) return;
     document.getElementById('detailPanel').classList.add('show');
     document.getElementById('detailName').textContent = d.n;
-    document.getElementById('detailMeta').textContent = `Código ${d.c} · Gestor: ${d.g} · Grade: ${d.gr || '—'} · Ranking: ${d.rk}`;
+
+    // Painel deve refletir o período selecionado no filtro (Ano/Semestre/Trimestre/Mensal),
+    // não sempre o ciclo oficial 2TRI26 — usa o mesmo helper que o resto da view já usa.
+    const periodMonths = getPeriodMonths();
+    const periodType = document.getElementById('fPeriodType').value;
+    const periodIdx = Number(document.getElementById('fPeriodValue').value);
+    const periodLabel = periodMonths ? ((PERIOD_DEFS[periodType][periodIdx]||{}).label || 'período') : '2TRI26';
+    const calc = periodMonths ? computePeriodElegRank(d, periodMonths) : null;
+    const curTotal = calc ? calc.periodTotal : d.t2;
+    const curMeta = calc ? calc.meta : d.meta;
+    const curGap = curTotal - curMeta;
+    const curRank = calc ? calc.rk : d.rk;
+
+    document.getElementById('detailMeta').textContent = `Código ${d.c} · Gestor: ${d.g} · Grade: ${d.gr || '—'} · Ranking: ${curRank}`;
+    document.getElementById('dT2Label').textContent = periodLabel;
+    document.getElementById('dMetaLabel').textContent = periodLabel;
+    document.getElementById('dGapLabel').textContent = periodLabel;
     document.getElementById('dTot').textContent = fmt0(d.tot);
-    document.getElementById('dT2').textContent = fmt0(d.t2);
-    document.getElementById('dMeta').textContent = fmt0(d.meta);
-    document.getElementById('dGap').textContent = (d.gap>=0?'+':'')+fmt0(d.gap);
+    document.getElementById('dT2').textContent = fmt0(curTotal);
+    document.getElementById('dMeta').textContent = fmt0(curMeta);
+    document.getElementById('dGap').textContent = (curGap>=0?'+':'')+fmt0(curGap);
     document.getElementById('dPico').textContent = fmt0(d.pico);
     document.getElementById('dU3').textContent = fmt0(d.u3);
 
     const RANK_THRESHOLDS_EST = [{r:'Bronze 1',min:900},{r:'Bronze 2',min:600},{r:'Bronze 3',min:300},{r:'Bronze 4',min:150},{r:'Bronze 5',min:60},{r:'Bronze 6',min:15}];
     const rgEl = document.getElementById('detailRankGap');
-    if (d.rk === 'Bronze 1'){
+    if (curRank === 'Bronze 1'){
       rgEl.innerHTML = '<i class=ic-award></i> Já está na faixa máxima (Bronze 1).';
     } else {
-      const curIdx = RANK_THRESHOLDS_EST.findIndex(x=>x.r === d.rk);
+      const curIdx = RANK_THRESHOLDS_EST.findIndex(x=>x.r === curRank);
       const nextTier = curIdx > 0 ? RANK_THRESHOLDS_EST[curIdx-1] : RANK_THRESHOLDS_EST[RANK_THRESHOLDS_EST.length-1];
-      const falta = Math.max(0, nextTier.min - d.t2);
-      const pct = nextTier.min ? Math.min(100, d.t2/nextTier.min*100) : 0;
+      const falta = Math.max(0, nextTier.min - curTotal);
+      const pct = nextTier.min ? Math.min(100, curTotal/nextTier.min*100) : 0;
       rgEl.innerHTML = falta > 0
         ? `<i class=ic-chart></i> Faltam <b>${fmt0(falta)} vidas</b> (está em <b>${pct.toFixed(0)}%</b>) para alcançar <b>${nextTier.r}</b> — estimativa com limiares aproximados, sujeita a confirmação`
         : `<i class=ic-trophy></i> Volume já suficiente para <b>${nextTier.r}</b> — classificação deve atualizar no próximo fechamento`;
