@@ -1169,6 +1169,21 @@
         <div>Super Simples (período filtrado)<b id="dCatSs">—</b></div>
         <div>PME (período filtrado)<b id="dCatPme">—</b></div>
       </div>
+      <div id="detailConquista" style="margin:14px 0 12px; padding:14px 16px; border-radius:12px; background:linear-gradient(135deg, rgba(255,184,28,.10), rgba(242,107,33,.06)); border:1px solid rgba(255,184,28,.35);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:12.5px; font-weight:800; color:var(--navy);"><i class=ic-trophy></i> Conquista Premiada — <span id="cqPeriodo">—</span></div>
+          <div id="cqBadge" style="font-size:11px; font-weight:800; padding:4px 10px; border-radius:20px; background:var(--navy); color:#fff; white-space:nowrap;">—</div>
+        </div>
+        <div style="display:flex; gap:22px; margin-top:10px; flex-wrap:wrap;">
+          <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Ganho atual</div><div style="font-size:18px; font-weight:800; color:var(--navy);" id="cqRate">—</div></div>
+          <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Vidas no trimestre</div><div style="font-size:18px; font-weight:800; color:var(--navy);" id="cqVidas">—</div></div>
+        </div>
+        <div id="cqProgressWrap" style="margin-top:12px;">
+          <div style="height:8px; background:#fff; border-radius:6px; overflow:hidden; border:1px solid rgba(0,0,0,.06);"><i id="cqProgressBar" style="display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent-coral), var(--accent-gold));"></i></div>
+          <div style="font-size:12px; margin-top:6px; color:var(--text);" id="cqProgressText">—</div>
+        </div>
+        <div style="font-size:12px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(0,0,0,.08); color:var(--muted);"><i class=ic-bulb></i> <span id="cqSuggestion">—</span></div>
+      </div>
       <div class="chart-box detail"><canvas id="chartDetail"></canvas></div>
     </div>
 
@@ -1892,6 +1907,74 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const el = (meta > 0 && periodTotal >= meta) ? 1 : 0;
     return { periodTotal, meta, el, rk, factor };
   }
+
+  /* =========================================================
+     CAMPANHA "CONQUISTA PREMIADA — 3TRI/2026"
+     Faixas e R$/vida extraídos do regulamento oficial (HMO).
+     Só cobre São Paulo (Metropolitana §4.1 / Interior §4.2) —
+     único escopo relevante para o NDI SP. Assume sempre HMO
+     (a base não distingue HMO/PPO). Não inclui o bônus extra de
+     performance de carteira (depende de dado que não temos: %
+     de crescimento da carteira ativa).
+     ========================================================= */
+  const CONQUISTA_METRO = [
+    {label:'Não Classificado', min:0,    rate:0},
+    {label:'Bronze 7',         min:30,   rate:55},
+    {label:'Bronze 6',         min:65,   rate:65},
+    {label:'Bronze 5',         min:160,  rate:75},
+    {label:'Bronze 4',         min:315,  rate:85},
+    {label:'Bronze 3',         min:475,  rate:90},
+    {label:'Bronze 2',         min:630,  rate:95},
+    {label:'Bronze 1',         min:945,  rate:110},
+    {label:'Prata',            min:1260, rate:135},
+    {label:'Ouro',             min:1735, rate:150},
+    {label:'Diamante',         min:2205, rate:165},
+    {label:'Safira',           min:3150, rate:210},
+  ];
+  const CONQUISTA_INTERIOR = [
+    {label:'Não Classificado', min:0,    rate:0},
+    {label:'Bronze',           min:30,   rate:40},
+    {label:'Prata',            min:100,  rate:50},
+    {label:'Ouro',             min:200,  rate:60},
+    {label:'Diamante',         min:600,  rate:70},
+    {label:'Safira',           min:2000, rate:80},
+  ];
+  // Equipe do gestor decide a tabela (Metropolitana x Interior). Mapa local e
+  // autocontido — hoje, todo gestor desta view pertence à equipe CAUDA LONGA
+  // (nunca INTERIOR SP), então na prática sempre cai na tabela Metropolitana.
+  const CONQUISTA_EQUIPE_BY_GESTOR = {
+    'Agatha Sakamoto':'CAUDA LONGA', 'Patricia Monks':'CAUDA LONGA',
+    'Jonathan Leal':'CAUDA LONGA', 'Pablo Amora':'CAUDA LONGA',
+  };
+  function computeConquista(d){
+    const equipe = CONQUISTA_EQUIPE_BY_GESTOR[d.g] || 'CAUDA LONGA';
+    const isInterior = equipe === 'INTERIOR SP';
+    const table = isInterior ? CONQUISTA_INTERIOR : CONQUISTA_METRO;
+    const campaignTri = PERIOD_DEFS.trimestre[PERIOD_DEFS.trimestre.length - 1];
+    const total = campaignTri.months.reduce((s,i)=>s+(d.m[i]||0), 0);
+    let idx = 0;
+    for (let i = 0; i < table.length; i++){ if (total >= table[i].min) idx = i; }
+    const cur = table[idx];
+    const next = table[idx+1] || null;
+    return {
+      campaignLabel: campaignTri.label, total,
+      label: cur.label, rate: cur.rate,
+      nextLabel: next ? next.label : null, nextRate: next ? next.rate : null,
+      faltam: next ? Math.max(0, next.min - total) : 0,
+      pct: next ? Math.min(100, total / next.min * 100) : 100,
+      isTop: !next,
+      regiao: isInterior ? 'Interior de SP' : 'Metropolitana de SP',
+    };
+  }
+  function conquistaSuggestion(calc){
+    if (calc.isTop) return 'Já está na faixa máxima da campanha (Safira) — manter o ritmo garante a bonificação máxima.';
+    if (calc.faltam <= 0) return `Volume já suficiente para ${calc.nextLabel} — classificação deve atualizar no próximo fechamento.`;
+    if (calc.pct >= 85) return `Muito perto de virar ${calc.nextLabel} — faltam só ${fmt0(calc.faltam)} vidas. Priorize contato imediato com essa corretora.`;
+    if (calc.pct >= 60) return `Boa chance de virar ${calc.nextLabel} ainda no trimestre — foco em ativar propostas paradas ou reativar corretoras inativas da carteira dela.`;
+    if (calc.pct >= 30) return `Distância moderada até ${calc.nextLabel} — acompanhamento de rotina ajuda a manter a evolução.`;
+    return `Ainda distante de ${calc.nextLabel} — sem urgência imediata, mas vale monitorar a evolução mês a mês.`;
+  }
+
   let DATA = window.__DASH_DATA__.DATA;
   let RANKDATA = window.__DASH_DATA__.RANKDATA;
   let PROPOSTAS = window.__DASH_DATA__.PROPOSTAS;
@@ -2880,6 +2963,23 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
         ? `<i class=ic-chart></i> Faltam <b>${fmt0(falta)} vidas</b> (está em <b>${pct.toFixed(0)}%</b>) para alcançar <b>${nextTier.r}</b> — estimativa com limiares aproximados, sujeita a confirmação`
         : `<i class=ic-trophy></i> Volume já suficiente para <b>${nextTier.r}</b> — classificação deve atualizar no próximo fechamento`;
     }
+
+    const cq = computeConquista(d);
+    document.getElementById('cqPeriodo').textContent = cq.campaignLabel;
+    document.getElementById('cqBadge').textContent = cq.label + ' · ' + cq.regiao;
+    document.getElementById('cqRate').textContent = 'R$ ' + fmt0(cq.rate) + '/vida';
+    document.getElementById('cqVidas').textContent = fmt0(cq.total);
+    const cqProgressWrap = document.getElementById('cqProgressWrap');
+    const cqBar = document.getElementById('cqProgressBar');
+    const cqText = document.getElementById('cqProgressText');
+    if (cq.isTop){
+      cqProgressWrap.style.display = 'none';
+    } else {
+      cqProgressWrap.style.display = '';
+      cqBar.style.width = cq.pct.toFixed(0) + '%';
+      cqText.innerHTML = `Faltam <b>${fmt0(cq.faltam)} vidas</b> (está em <b>${cq.pct.toFixed(0)}%</b>) para virar <b>${cq.nextLabel}</b> — R$ ${fmt0(cq.rate)}/vida → R$ ${fmt0(cq.nextRate)}/vida`;
+    }
+    document.getElementById('cqSuggestion').textContent = conquistaSuggestion(cq);
 
     if (d.mc){
       const periodMonths = getPeriodMonths();
