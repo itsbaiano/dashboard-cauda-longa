@@ -871,9 +871,15 @@
         <button class="subtab-btn active" id="pendTabPme">PME / SS <span id="pendCountPme" class="gestor-tag" style="background:var(--primary-mid); margin-left:4px;">0</span></button>
         <button class="subtab-btn" id="pendTabPf">PF <span id="pendCountPf" class="gestor-tag" style="background:var(--accent-coral); margin-left:4px;">0</span></button>
       </div>
-      <div class="f-group" style="margin-top:12px; max-width:260px;">
-        <label id="pendFilterLabel">Filtrar por Data Vigência</label>
-        <select id="pendMonthFilter"><option value="">Todos os meses</option></select>
+      <div style="display:flex; gap:14px; flex-wrap:wrap; margin-top:12px;">
+        <div class="f-group" style="max-width:260px;">
+          <label id="pendFilterLabel">Filtrar por Data Vigência</label>
+          <select id="pendMonthFilter"><option value="">Todos os meses</option></select>
+        </div>
+        <div class="f-group" style="max-width:260px;">
+          <label>Filtrar por Corretora</label>
+          <select id="pendCorretoraFilter"><option value="">Todas</option></select>
+        </div>
       </div>
       <div class="f-group" style="margin-top:12px;">
         <label>Filtrar por Status <span id="pendStatusClear" style="font-weight:400; color:var(--blue); cursor:pointer; display:none; margin-left:6px;">(limpar)</span></label>
@@ -1916,6 +1922,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     sel.value = months.includes(prevVal) ? prevVal : '';
     const activeMonth = sel.value;
 
+    const corretoras = [...new Set(list.map(p => p.corretora).filter(Boolean))].sort();
+    const corSel = document.getElementById('pendCorretoraFilter');
+    const prevCor = corSel.value;
+    corSel.innerHTML = '<option value="">Todas</option>' + corretoras.map(c => `<option value="${c}">${c}</option>`).join('');
+    corSel.value = corretoras.includes(prevCor) ? prevCor : '';
+    const activeCorretora = corSel.value;
+
     const statusesOf = p => {
       if (Array.isArray(p.status)) return p.status;
       if (p.status && typeof p.status === 'object') return Object.values(p.status).filter(v=>v && v !== '0');
@@ -1934,8 +1947,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     });
     document.getElementById('pendStatusClear').style.display = pendSelectedStatuses.size ? '' : 'none';
 
-    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
-    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
+    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
+    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
 
     document.getElementById('pendCountPme').textContent = pmeFiltered.reduce((s,p)=>s+(p.beneficiarios||0),0);
     document.getElementById('pendCountPf').textContent = pfFiltered.reduce((s,p)=>s+(p.vidas||0),0);
@@ -1963,6 +1976,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('pendPmeSection').style.display = '';
     document.getElementById('pendPfSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
+    document.getElementById('pendCorretoraFilter').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
     document.getElementById('pendModalOverlay').style.display = 'flex';
@@ -1971,11 +1985,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('pendModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'pendModalOverlay') document.getElementById('pendModalOverlay').style.display = 'none'; });
   document.getElementById('pendStatusClear').addEventListener('click', () => { pendSelectedStatuses.clear(); renderPendencias(); });
   document.getElementById('pendMonthFilter').addEventListener('change', renderPendencias);
+  document.getElementById('pendCorretoraFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendTabPme').addEventListener('click', () => {
     pendActiveTab = 'pme';
     document.getElementById('pendTabPme').classList.add('active'); document.getElementById('pendTabPf').classList.remove('active');
     document.getElementById('pendPmeSection').style.display = ''; document.getElementById('pendPfSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
+    document.getElementById('pendCorretoraFilter').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
   });
@@ -1984,6 +2000,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('pendTabPf').classList.add('active'); document.getElementById('pendTabPme').classList.remove('active');
     document.getElementById('pendPfSection').style.display = ''; document.getElementById('pendPmeSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
+    document.getElementById('pendCorretoraFilter').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
   });
@@ -3464,7 +3481,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('btnNext').addEventListener('click', ()=>{ page++; renderTable(applyFilters()); });
 
   populatePeriodValue(true);
-  document.getElementById('fPeriodType').addEventListener('change', ()=>{ populatePeriodValue(true); renderActive(); document.getElementById('elKpiRow') && !elMode.startsWith('ass') && document.getElementById('elKpiRow').scrollIntoView({behavior:'smooth', block:'start'}); });
+  document.getElementById('fPeriodType').addEventListener('change', ()=>{ populatePeriodValue(true); renderActive(); });
   document.getElementById('fPeriodValue').addEventListener('change', ()=>{ renderActive(); });
 
   // ===================== RANKING DE VENDAS =====================
