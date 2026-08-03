@@ -1177,12 +1177,27 @@
         <div style="display:flex; gap:22px; margin-top:10px; flex-wrap:wrap;">
           <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Ganho atual</div><div style="font-size:18px; font-weight:800; color:var(--navy);" id="cqRate">—</div></div>
           <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Vidas no trimestre</div><div style="font-size:18px; font-weight:800; color:var(--navy);" id="cqVidas">—</div></div>
+          <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Bônus estimado (corretora)</div><div style="font-size:18px; font-weight:800; color:#1b7a63;" id="cqBonusFull">—</div></div>
+          <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Fatia executivo (75%)</div><div style="font-size:18px; font-weight:800; color:var(--blue);" id="cqBonusExec">—</div></div>
         </div>
         <div id="cqProgressWrap" style="margin-top:12px;">
           <div style="height:8px; background:#fff; border-radius:6px; overflow:hidden; border:1px solid rgba(0,0,0,.06);"><i id="cqProgressBar" style="display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--accent-coral), var(--accent-gold));"></i></div>
           <div style="font-size:12px; margin-top:6px; color:var(--text);" id="cqProgressText">—</div>
         </div>
         <div style="font-size:12px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(0,0,0,.08); color:var(--muted);"><i class=ic-bulb></i> <span id="cqSuggestion">—</span></div>
+
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed rgba(0,0,0,.15);">
+          <div style="font-size:11.5px; font-weight:800; color:var(--navy); margin-bottom:8px;"><i class=ic-target></i> Simulador — gap para próxima classificação</div>
+          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px;">Simular vidas no trimestre</div>
+          <input type="range" id="cqSimSlider" min="0" max="100" value="0" style="width:100%; accent-color:var(--accent-coral);">
+          <div style="display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted); margin-top:2px;"><span id="cqSimVidas">—</span><span id="cqSimMax">—</span></div>
+          <div style="display:flex; gap:20px; margin-top:10px; flex-wrap:wrap;">
+            <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Classificação</div><div style="font-size:14px; font-weight:800; color:var(--navy);" id="cqSimBadge">—</div></div>
+            <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">R$/vida</div><div style="font-size:14px; font-weight:800; color:var(--navy);" id="cqSimRate">—</div></div>
+            <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Bônus (corretora)</div><div style="font-size:14px; font-weight:800; color:#1b7a63;" id="cqSimBonusFull">—</div></div>
+            <div><div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">Fatia executivo (75%)</div><div style="font-size:14px; font-weight:800; color:var(--blue);" id="cqSimBonusExec">—</div></div>
+          </div>
+        </div>
       </div>
       <div class="chart-box detail"><canvas id="chartDetail"></canvas></div>
     </div>
@@ -1946,25 +1961,37 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     'Agatha Sakamoto':'CAUDA LONGA', 'Patricia Monks':'CAUDA LONGA',
     'Jonathan Leal':'CAUDA LONGA', 'Pablo Amora':'CAUDA LONGA',
   };
+  // Distribuição da bonificação na cadeia comercial Hapvida (regulamento §2.2.1):
+  // Executivos 75% / Supervisores 20% / Gerentes 5%. A corretora recebe o R$/vida
+  // cheio da tabela; isso é só a fatia interna do executivo/gestor sobre esse total.
+  const CONQUISTA_EXEC_SHARE = 0.75;
+  function conquistaTierLookup(table, total){
+    let idx = 0;
+    for (let i = 0; i < table.length; i++){ if (total >= table[i].min) idx = i; }
+    const cur = table[idx];
+    const next = table[idx+1] || null;
+    return {
+      total, label: cur.label, rate: cur.rate,
+      nextLabel: next ? next.label : null, nextRate: next ? next.rate : null,
+      faltam: next ? Math.max(0, next.min - total) : 0,
+      pct: next ? Math.min(100, total / next.min * 100) : 100,
+      isTop: !next,
+      bonusFull: total * cur.rate,
+      bonusExec: total * cur.rate * CONQUISTA_EXEC_SHARE,
+    };
+  }
   function computeConquista(d){
     const equipe = CONQUISTA_EQUIPE_BY_GESTOR[d.g] || 'CAUDA LONGA';
     const isInterior = equipe === 'INTERIOR SP';
     const table = isInterior ? CONQUISTA_INTERIOR : CONQUISTA_METRO;
     const campaignTri = PERIOD_DEFS.trimestre[PERIOD_DEFS.trimestre.length - 1];
     const total = campaignTri.months.reduce((s,i)=>s+(d.m[i]||0), 0);
-    let idx = 0;
-    for (let i = 0; i < table.length; i++){ if (total >= table[i].min) idx = i; }
-    const cur = table[idx];
-    const next = table[idx+1] || null;
-    return {
-      campaignLabel: campaignTri.label, total,
-      label: cur.label, rate: cur.rate,
-      nextLabel: next ? next.label : null, nextRate: next ? next.rate : null,
-      faltam: next ? Math.max(0, next.min - total) : 0,
-      pct: next ? Math.min(100, total / next.min * 100) : 100,
-      isTop: !next,
+    const tier = conquistaTierLookup(table, total);
+    return Object.assign({
+      campaignLabel: campaignTri.label,
       regiao: isInterior ? 'Interior de SP' : 'Metropolitana de SP',
-    };
+      table,
+    }, tier);
   }
   function conquistaSuggestion(calc){
     if (calc.isTop) return 'Já está na faixa máxima da campanha (Safira) — manter o ritmo garante a bonificação máxima.';
@@ -2969,6 +2996,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('cqBadge').textContent = cq.label + ' · ' + cq.regiao;
     document.getElementById('cqRate').textContent = 'R$ ' + fmt0(cq.rate) + '/vida';
     document.getElementById('cqVidas').textContent = fmt0(cq.total);
+    document.getElementById('cqBonusFull').textContent = 'R$ ' + fmt0(cq.bonusFull);
+    document.getElementById('cqBonusExec').textContent = 'R$ ' + fmt0(cq.bonusExec);
     const cqProgressWrap = document.getElementById('cqProgressWrap');
     const cqBar = document.getElementById('cqProgressBar');
     const cqText = document.getElementById('cqProgressText');
@@ -2980,6 +3009,23 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       cqText.innerHTML = `Faltam <b>${fmt0(cq.faltam)} vidas</b> (está em <b>${cq.pct.toFixed(0)}%</b>) para virar <b>${cq.nextLabel}</b> — R$ ${fmt0(cq.rate)}/vida → R$ ${fmt0(cq.nextRate)}/vida`;
     }
     document.getElementById('cqSuggestion').textContent = conquistaSuggestion(cq);
+
+    function renderConquistaSim(vidas){
+      const sim = conquistaTierLookup(cq.table, vidas);
+      document.getElementById('cqSimVidas').textContent = fmt0(vidas) + ' vidas (simulado)';
+      document.getElementById('cqSimBadge').textContent = sim.label;
+      document.getElementById('cqSimRate').textContent = 'R$ ' + fmt0(sim.rate);
+      document.getElementById('cqSimBonusFull').textContent = 'R$ ' + fmt0(sim.bonusFull);
+      document.getElementById('cqSimBonusExec').textContent = 'R$ ' + fmt0(sim.bonusExec);
+    }
+    const cqSlider = document.getElementById('cqSimSlider');
+    const cqSliderMax = Math.max(cq.table[cq.table.length-1].min, Math.ceil(cq.total * 1.1), 100);
+    cqSlider.min = 0;
+    cqSlider.max = cqSliderMax;
+    cqSlider.value = cq.total;
+    document.getElementById('cqSimMax').textContent = fmt0(cqSliderMax) + ' vidas';
+    renderConquistaSim(cq.total);
+    cqSlider.oninput = () => renderConquistaSim(Number(cqSlider.value));
 
     if (d.mc){
       const periodMonths = getPeriodMonths();
