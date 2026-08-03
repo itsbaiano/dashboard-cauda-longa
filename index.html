@@ -184,6 +184,11 @@
   .cat-row .bar-bg{flex:1; height:7px; background:#eef1f6; border-radius:4px; overflow:hidden;}
   .cat-row .bar-fill{height:100%; border-radius:4px; transition:width .5s ease;}
   .cat-row .cat-pct{width:42px; text-align:right; font-weight:700; color:var(--text);}
+  .gestor-card .ring-row{display:flex; align-items:center; gap:12px; margin-bottom:10px;}
+  .gestor-card .ring-info{flex:1; min-width:0;}
+  .gestor-card .opp-label{font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin:7px 0 3px;}
+  .gestor-card .opp-chip{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap;}
+  .gestor-card .cat-mini{font-size:10.5px; color:var(--muted); border-top:1px solid var(--line); padding-top:9px;}
 
   /* SUB-TABS */
   .subtabs{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
@@ -646,7 +651,7 @@
   // Administrador: publica pra todo mundo. Executivo: só prévia na própria tela.
   // Pra dar acesso a mais alguém, basta adicionar o e-mail na lista certa.
   const ADMIN_EMAILS = ['victor.oliveirae@hapvida.com.br', 'estevao.consultor@gmail.com', 'amanda.ksilva@hapvida.com.br', 'brenda.romano@hapvida.com.br'];
-  const EXECUTIVO_EMAILS = ['jonathan.lsilva@hapvida.com.br', 'agatha.sakamoto@hapvida.com.br', 'patricia.monks@hapvida.com.br', 'pablo.amora@hapvida.com.br'];
+  const EXECUTIVO_EMAILS = ['jonathan.lsilva@hapvida.com.br', 'agatha.sakamoto@hapvida.com.br', 'patricia.monks@hapvida.com.br', 'pablo.amora@hapvida.com.br', 'daniel.vsoares@hapvida.com.br'];
   const norm = e => String(e || '').trim().toLowerCase();
   const ADMIN_SET = new Set(ADMIN_EMAILS.map(norm));
   const ALLOWED_SET = new Set(ADMIN_EMAILS.concat(EXECUTIVO_EMAILS).map(norm));
@@ -1651,6 +1656,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   const fmt0 = n => Math.round(n).toLocaleString('pt-BR');
   const pctf = n => (n*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
   const pctColor = p => p >= 1 ? 'var(--green)' : (p >= 0.7 ? 'var(--amber)' : 'var(--red)');
+  const pctBg = p => p >= 1 ? 'rgba(22,184,122,.14)' : (p >= 0.7 ? 'rgba(255,184,28,.16)' : 'rgba(245,54,74,.12)');
   const catLabels = {IND:'Individual', SS:'Super Simples', PME:'PME', ADM:'Administradora'};
   const catKeys = Object.keys(catLabels);
   const iniciais = nome => nome.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
@@ -1784,24 +1790,38 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     });
 
     document.getElementById('mjGestorGrid').innerHTML = members.map(m => {
-      const catsHtml = catKeys.map(k => {
-        const c = m.cat[k]; const p = c.meta ? c.int/c.meta : 0; const pct = Math.min(p*100, 100);
-        return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${pctColor(p)}"></div></div><div class="cat-pct">${pctf(p)}</div></div>`;
-      }).join('');
       const pTotal = m.total.meta ? m.total.int/m.total.meta : 0;
+      let oppKey = catKeys.find(k => m.cat[k].meta > 0) || catKeys[0], oppPct = Infinity;
+      catKeys.forEach(k => { const c = m.cat[k]; if (!c.meta) return; const p = c.int/c.meta; if (p < oppPct){ oppPct = p; oppKey = k; } });
+      if (oppPct === Infinity) oppPct = 0;
+      const miniCats = catKeys.filter(k=>k!==oppKey).map(k => { const c = m.cat[k]; const p = c.meta ? c.int/c.meta : 0; return `${k} ${pctf(p)}`; }).join(' · ');
+      const ringR = 20, ringC = 2*Math.PI*ringR, ringOffset = ringC * (1 - Math.min(pTotal,1));
       return `<div class="gestor-card" style="cursor:pointer" onclick="window.showPendenciasModal('${m.nome.replace(/'/g,"\\'")}')" title="Ver pendências PME/PF">
         <div class="avatar" style="background:${m.cor}">${iniciais(m.nome)}</div><div class="name">${m.nome}</div><div class="role">Gestor(a) Comercial</div>
-        <div class="total-pct" style="color:${pctColor(pTotal)}">${pctf(pTotal)}</div>
-        <div class="total-label">${fmt0(m.total.int)} / ${fmt0(m.total.meta)} vidas (meta total)</div>${catsHtml}</div>`;
+        <div class="ring-row">
+          <svg width="56" height="56" viewBox="0 0 56 56">
+            <circle cx="28" cy="28" r="${ringR}" fill="none" stroke="#eef1f6" stroke-width="6"></circle>
+            <circle cx="28" cy="28" r="${ringR}" fill="none" stroke="${pctColor(pTotal)}" stroke-width="6" stroke-dasharray="${ringC.toFixed(2)}" stroke-dashoffset="${ringOffset.toFixed(2)}" stroke-linecap="round" transform="rotate(-90 28 28)"></circle>
+            <text x="28" y="32" text-anchor="middle" font-size="12" font-weight="700" fill="var(--navy)">${Math.round(pTotal*100)}%</text>
+          </svg>
+          <div class="ring-info">
+            <div class="total-label" style="margin-bottom:0;">${fmt0(m.total.int)} / ${fmt0(m.total.meta)} vidas (meta total)</div>
+            <div class="opp-label">Maior oportunidade</div>
+            <div class="opp-chip" style="background:${pctBg(oppPct)}; color:${pctColor(oppPct)}">${catLabels[oppKey]} ${pctf(oppPct)}</div>
+          </div>
+        </div>
+        <div class="cat-mini">${miniCats}</div>
+      </div>`;
     }).join('');
 
     document.getElementById('mjCorretorasTitle').textContent = `Corretoras — Vendas do Período (${teamLabel})`;
     const corrTabsEl = document.getElementById('mjCorretorasTabs');
-    corrTabsEl.innerHTML = members.map((m,i) => `<button class="subtab-btn ${i===0?'active':''}" data-g="${m.nome}">${m.nome}</button>`).join('');
+    const defaultCorretorasGestor = (mjSelectedGestor && members.find(m=>m.nome===mjSelectedGestor)) ? mjSelectedGestor : (members[0] ? members[0].nome : null);
+    corrTabsEl.innerHTML = members.map(m => `<button class="subtab-btn ${m.nome===defaultCorretorasGestor?'active':''}" data-g="${m.nome}">${m.nome}</button>`).join('');
     corrTabsEl.querySelectorAll('.subtab-btn').forEach(btn => {
       btn.addEventListener('click', () => { corrTabsEl.querySelectorAll('.subtab-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderCorretoras(btn.dataset.g); });
     });
-    if (members.length) renderCorretoras(members[0].nome);
+    if (defaultCorretorasGestor) renderCorretoras(defaultCorretorasGestor);
   }
 
   document.getElementById('mjResetTeam').addEventListener('click', () => {
@@ -2167,6 +2187,22 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     {label:'Diamante',         min:600,  rate:70},
     {label:'Safira',           min:2000, rate:80},
   ];
+  // Campanha "Hap-Top-SP" — regra anterior à atual, vigente de 2TRI/25 até 2TRI/26
+  // (regulamento oficial do 2TRI/25, mesma tabela usada em todo trimestre anterior ao
+  // 3TRI/26). Tabela única pro estado de SP inteiro — não separa Metropolitana/Interior.
+  const CONQUISTA_LEGACY = [
+    {label:'Não Classificado', min:0,    rate:0},
+    {label:'Bronze 6',         min:15,   rate:50},
+    {label:'Bronze 5',         min:60,   rate:60},
+    {label:'Bronze 4',         min:150,  rate:70},
+    {label:'Bronze 3',         min:300,  rate:80},
+    {label:'Bronze 2',         min:600,  rate:90},
+    {label:'Bronze 1',         min:900,  rate:105},
+    {label:'Prata',            min:1200, rate:130},
+    {label:'Ouro',             min:1650, rate:145},
+    {label:'Diamante',         min:2100, rate:160},
+    {label:'Safira',           min:3000, rate:200},
+  ];
   // Equipe do gestor decide a tabela (Metropolitana x Interior). Mapa local e
   // autocontido — hoje, todo gestor desta view pertence à equipe CAUDA LONGA
   // (nunca INTERIOR SP), então na prática sempre cai na tabela Metropolitana.
@@ -2193,16 +2229,36 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       bonusExec: total * cur.rate * CONQUISTA_EXEC_SHARE,
     };
   }
+  // Conquista Premiada só existe pra um trimestre específico selecionado no filtro
+  // principal (fPeriodType==='trimestre') — fora disso (Mensal/Semestre/Ano/Todos os
+  // 18 meses) a campanha fica indisponível, já que os limiares de vidas são pensados
+  // pra uma janela de exatamente 3 meses. Retorna null quando não aplicável.
+  function getConquistaPeriod(){
+    const type = document.getElementById('fPeriodType').value;
+    if (type !== 'trimestre') return null;
+    const idx = Number(document.getElementById('fPeriodValue').value);
+    return PERIOD_DEFS.trimestre[idx] || null;
+  }
   function computeConquista(d){
-    const equipe = CONQUISTA_EQUIPE_BY_GESTOR[d.g] || 'CAUDA LONGA';
-    const isInterior = equipe === 'INTERIOR SP';
-    const table = isInterior ? CONQUISTA_INTERIOR : CONQUISTA_METRO;
-    const campaignTri = PERIOD_DEFS.trimestre[PERIOD_DEFS.trimestre.length - 1];
+    const campaignTri = getConquistaPeriod();
+    if (!campaignTri) return null;
+    // Regra vigente (3TRI/26+, Metro/Interior) só pro(s) trimestre(s) da era nova;
+    // qualquer trimestre anterior (2TRI/25 até 2TRI/26) usa a regra Hap-Top-SP antiga.
+    let table, regiao;
+    if (isNewEra(campaignTri.months)){
+      const equipe = CONQUISTA_EQUIPE_BY_GESTOR[d.g] || 'CAUDA LONGA';
+      const isInterior = equipe === 'INTERIOR SP';
+      table = isInterior ? CONQUISTA_INTERIOR : CONQUISTA_METRO;
+      regiao = isInterior ? 'Interior de SP' : 'Metropolitana de SP';
+    } else {
+      table = CONQUISTA_LEGACY;
+      regiao = 'São Paulo (regra Hap-Top-SP)';
+    }
     const total = campaignTri.months.reduce((s,i)=>s+(d.m[i]||0), 0);
     const tier = conquistaTierLookup(table, total);
     return Object.assign({
       campaignLabel: campaignTri.label,
-      regiao: isInterior ? 'Interior de SP' : 'Metropolitana de SP',
+      regiao,
       table,
     }, tier);
   }
@@ -2219,7 +2275,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   // computePeriodElegRank já usa pro período corrente — reaproveitada aqui, não duplicada).
   function computeConquistaFull(d){
     const cq = computeConquista(d);
-    const campaignTri = PERIOD_DEFS.trimestre[PERIOD_DEFS.trimestre.length - 1];
+    if (!cq) return null;
+    const campaignTri = getConquistaPeriod();
     const elCalc = computePeriodElegRank(d, campaignTri.months);
     const hasTier = cq.label !== 'Não Classificado';
     const isEligible = hasTier && elCalc.el === 1;
@@ -2543,7 +2600,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   const CQG_PP = 15;
 
   function conquistaRowsAll(){
-    return DATA.map(d => Object.assign({d}, computeConquistaFull(d)));
+    return DATA.map(d => { const cq = computeConquistaFull(d); return cq ? Object.assign({d}, cq) : null; }).filter(Boolean);
   }
 
   function applyConquistaFilters(rows){
@@ -2679,7 +2736,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     selGestorEl.innerHTML = '<option value="">Todos</option>' + gestorNames.map(g=>`<option value="${g}">${g}</option>`).join('');
     selGestorEl.value = cqgFilterGestor || curGestorVal || '';
     const classesPresent = [...new Set(rows.filter(r=>r.hasTier).map(r=>r.label))];
-    const classOrderAll = CONQUISTA_METRO.map(t=>t.label);
+    const campaignTriNow = getConquistaPeriod();
+    const classOrderAll = (campaignTriNow && isNewEra(campaignTriNow.months)) ? CONQUISTA_METRO.map(t=>t.label) : CONQUISTA_LEGACY.map(t=>t.label);
     const classesSorted = classOrderAll.filter(c => classesPresent.includes(c));
     const selClassEl = document.getElementById('cqgFClass');
     const curClassVal = selClassEl.value;
@@ -3397,40 +3455,46 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }
 
     const cq = computeConquista(d);
-    document.getElementById('cqPeriodo').textContent = cq.campaignLabel;
-    document.getElementById('cqBadge').textContent = cq.label + ' · ' + cq.regiao;
-    document.getElementById('cqRate').textContent = 'R$ ' + fmt0(cq.rate) + '/vida';
-    document.getElementById('cqVidas').textContent = fmt0(cq.total);
-    document.getElementById('cqBonusFull').textContent = 'R$ ' + fmt0(cq.bonusFull);
-    document.getElementById('cqBonusExec').textContent = 'R$ ' + fmt0(cq.bonusExec);
-    const cqProgressWrap = document.getElementById('cqProgressWrap');
-    const cqBar = document.getElementById('cqProgressBar');
-    const cqText = document.getElementById('cqProgressText');
-    if (cq.isTop){
-      cqProgressWrap.style.display = 'none';
+    const detailConquistaEl = document.getElementById('detailConquista');
+    if (!cq){
+      detailConquistaEl.style.display = 'none';
     } else {
-      cqProgressWrap.style.display = '';
-      cqBar.style.width = cq.pct.toFixed(0) + '%';
-      cqText.innerHTML = `Faltam <b>${fmt0(cq.faltam)} vidas</b> (está em <b>${cq.pct.toFixed(0)}%</b>) para virar <b>${cq.nextLabel}</b> — R$ ${fmt0(cq.rate)}/vida → R$ ${fmt0(cq.nextRate)}/vida`;
-    }
-    document.getElementById('cqSuggestion').textContent = conquistaSuggestion(cq);
+      detailConquistaEl.style.display = '';
+      document.getElementById('cqPeriodo').textContent = cq.campaignLabel;
+      document.getElementById('cqBadge').textContent = cq.label + ' · ' + cq.regiao;
+      document.getElementById('cqRate').textContent = 'R$ ' + fmt0(cq.rate) + '/vida';
+      document.getElementById('cqVidas').textContent = fmt0(cq.total);
+      document.getElementById('cqBonusFull').textContent = 'R$ ' + fmt0(cq.bonusFull);
+      document.getElementById('cqBonusExec').textContent = 'R$ ' + fmt0(cq.bonusExec);
+      const cqProgressWrap = document.getElementById('cqProgressWrap');
+      const cqBar = document.getElementById('cqProgressBar');
+      const cqText = document.getElementById('cqProgressText');
+      if (cq.isTop){
+        cqProgressWrap.style.display = 'none';
+      } else {
+        cqProgressWrap.style.display = '';
+        cqBar.style.width = cq.pct.toFixed(0) + '%';
+        cqText.innerHTML = `Faltam <b>${fmt0(cq.faltam)} vidas</b> (está em <b>${cq.pct.toFixed(0)}%</b>) para virar <b>${cq.nextLabel}</b> — R$ ${fmt0(cq.rate)}/vida → R$ ${fmt0(cq.nextRate)}/vida`;
+      }
+      document.getElementById('cqSuggestion').textContent = conquistaSuggestion(cq);
 
-    function renderConquistaSim(vidas){
-      const sim = conquistaTierLookup(cq.table, vidas);
-      document.getElementById('cqSimVidas').textContent = fmt0(vidas) + ' vidas (simulado)';
-      document.getElementById('cqSimBadge').textContent = sim.label;
-      document.getElementById('cqSimRate').textContent = 'R$ ' + fmt0(sim.rate);
-      document.getElementById('cqSimBonusFull').textContent = 'R$ ' + fmt0(sim.bonusFull);
-      document.getElementById('cqSimBonusExec').textContent = 'R$ ' + fmt0(sim.bonusExec);
+      const renderConquistaSim = vidas => {
+        const sim = conquistaTierLookup(cq.table, vidas);
+        document.getElementById('cqSimVidas').textContent = fmt0(vidas) + ' vidas (simulado)';
+        document.getElementById('cqSimBadge').textContent = sim.label;
+        document.getElementById('cqSimRate').textContent = 'R$ ' + fmt0(sim.rate);
+        document.getElementById('cqSimBonusFull').textContent = 'R$ ' + fmt0(sim.bonusFull);
+        document.getElementById('cqSimBonusExec').textContent = 'R$ ' + fmt0(sim.bonusExec);
+      };
+      const cqSlider = document.getElementById('cqSimSlider');
+      const cqSliderMax = Math.max(cq.table[cq.table.length-1].min, Math.ceil(cq.total * 1.1), 100);
+      cqSlider.min = 0;
+      cqSlider.max = cqSliderMax;
+      cqSlider.value = cq.total;
+      document.getElementById('cqSimMax').textContent = fmt0(cqSliderMax) + ' vidas';
+      renderConquistaSim(cq.total);
+      cqSlider.oninput = () => renderConquistaSim(Number(cqSlider.value));
     }
-    const cqSlider = document.getElementById('cqSimSlider');
-    const cqSliderMax = Math.max(cq.table[cq.table.length-1].min, Math.ceil(cq.total * 1.1), 100);
-    cqSlider.min = 0;
-    cqSlider.max = cqSliderMax;
-    cqSlider.value = cq.total;
-    document.getElementById('cqSimMax').textContent = fmt0(cqSliderMax) + ' vidas';
-    renderConquistaSim(cq.total);
-    cqSlider.oninput = () => renderConquistaSim(Number(cqSlider.value));
 
     if (d.mc){
       const periodMonths = getPeriodMonths();
@@ -3480,9 +3544,15 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('btnPrev').addEventListener('click', ()=>{ if(page>1){page--; renderTable(applyFilters());} });
   document.getElementById('btnNext').addEventListener('click', ()=>{ page++; renderTable(applyFilters()); });
 
+  // Conquista Premiada só faz sentido pra um trimestre específico (ver getConquistaPeriod) —
+  // o botão que abre a visão geral da campanha some fora dessa seleção.
+  function updateConquistaAvailability(){
+    document.getElementById('btnOpenConquista').style.display = getConquistaPeriod() ? '' : 'none';
+  }
   populatePeriodValue(true);
-  document.getElementById('fPeriodType').addEventListener('change', ()=>{ populatePeriodValue(true); renderActive(); });
-  document.getElementById('fPeriodValue').addEventListener('change', ()=>{ renderActive(); });
+  updateConquistaAvailability();
+  document.getElementById('fPeriodType').addEventListener('change', ()=>{ populatePeriodValue(true); renderActive(); updateConquistaAvailability(); });
+  document.getElementById('fPeriodValue').addEventListener('change', ()=>{ renderActive(); updateConquistaAvailability(); });
 
   // ===================== RANKING DE VENDAS =====================
   const rkFmt = n => Math.round(n).toLocaleString('pt-BR');
@@ -4202,7 +4272,6 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     const eligCount = elig.filter(d=>d.el===1).length;
     const eligPct = elig.length ? eligCount/elig.length*100 : 0;
     const reactList = elig.filter(d => d.u3===0 && d.tot>=20);
-    const ativas = elig.filter(d => d.t2 > 0).length;
     const jumpGestor = isTeamScope ? '' : execVal;
     const jumpTeamName = teamName;
 
@@ -4218,11 +4287,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
         {icon:"<i class=ic-trend></i>", label:"Vidas — Total 17 Meses", value: fmt0(totSum17m), sub: elig.length+" corretoras na base", cls:'',
           onclick:`window.jumpToElegibilidade({gestor:'${jumpGestor.replace(/'/g,"\\'")}'})`},
         {icon:"<i class=ic-check></i>", label:"% Elegíveis", value: eligPct.toFixed(1)+'%', sub: eligCount+' de '+elig.length, cls: eligPct>=10?'pos':'warn',
-          onclick:`window.jumpToElegibilidade({gestor:'${jumpGestor.replace(/'/g,"\\'")}'})`},
-        {icon:"<i class=ic-dot></i>", label:"Corretoras Ativas (2TRI26)", value: fmt0(ativas), sub: "de "+elig.length+" na carteira", cls:'',
-          onclick:`window.jumpToElegibilidade({gestor:'${jumpGestor.replace(/'/g,"\\'")}'})`},
-        {icon:"<i class=ic-target></i>", label:"Oportunidades de Reativação", value: fmt0(reactList.length), sub: fmt0(reactList.reduce((s,d)=>s+d.tot,0))+" vidas em potencial", cls:'warn',
-          onclick:`window.jumpToElegibilidade({gestor:'${jumpGestor.replace(/'/g,"\\'")}', reactivationOnly:true})`}
+          onclick:`window.jumpToElegibilidade({gestor:'${jumpGestor.replace(/'/g,"\\'")}'})`}
       );
     }
     document.getElementById('ovKpiRow').innerHTML = kpis.map(k=>`<div class="kpi" style="cursor:pointer" title="Clique para ver o detalhe" onclick="${k.onclick}"><div class="kpi-icon">${k.icon}</div><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="sub ${k.cls}">${k.sub}</div></div>`).join('');
@@ -4282,7 +4347,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     } else {
       document.getElementById('ovGestorGrid').innerHTML = scopeMembers.map(m => {
         const p = m.total.meta ? m.total.int/m.total.meta : 0;
-        const clickable = isCaudaLongaScope ? `style="cursor:pointer" onclick="window.jumpToMetaJunho('${teamName.replace(/'/g,"\\'")}', '${m.nome.replace(/'/g,"\\'")}')" title="Ver números deste gestor no Desempenho Comercial"` : '';
+        const clickable = `style="cursor:pointer" onclick="window.jumpToMetaJunho('${teamName.replace(/'/g,"\\'")}', '${m.nome.replace(/'/g,"\\'")}')" title="Ver números deste gestor no Desempenho Comercial"`;
         return `<div class="gestor-card" ${clickable}><div class="avatar" style="background:${m.cor}">${iniciais(m.nome)}</div><div class="name">${m.nome}</div><div class="role">Gestor(a) Comercial</div>
           <div class="total-pct" style="color:${pctColor(p)}">${pctf(p)}</div>
           <div class="total-label">${fmt0(m.total.int)} / ${fmt0(m.total.meta)} vidas (meta total)</div></div>`;
@@ -4290,7 +4355,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     }
 
     // Seção dependente de Elegibilidade — oculta inteira fora do escopo Cauda Longa
-    document.getElementById('ovEligSection').style.display = isCaudaLongaScope ? '' : 'none';
+    document.getElementById('ovEligSection').style.display = 'none';
     if (isCaudaLongaScope){
       document.getElementById('ovOtherTeamCorretoras').style.display = 'none';
       const periodOpt = document.getElementById('ovTopPeriod').value;
