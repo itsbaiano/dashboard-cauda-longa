@@ -765,6 +765,48 @@
     </div>
   </div>
 
+  <style>
+    .cqg-kpi, .cqg-card{ transition:transform .18s ease, box-shadow .18s ease; }
+    .cqg-kpi:hover, .cqg-card:hover{ transform:translateY(-3px); box-shadow:0 10px 24px rgba(16,30,99,.12); }
+    .cqg-card.selected{ outline:2px solid var(--accent-coral); outline-offset:-1px; }
+    .cqg-top3-row:hover{ background:rgba(46,82,212,.08) !important; }
+  </style>
+  <div id="conquistaModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
+    <div id="conquistaModal" style="background:#fff; border-radius:16px; padding:26px; max-width:980px; width:100%; max-height:90vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div>
+          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">Campanha</div>
+          <h2 style="font-size:18px; color:var(--navy); margin-bottom:2px;"><i class=ic-trophy></i> Conquista Premiada — <span id="cqgPeriodo">—</span></h2>
+          <p style="font-size:12.5px; color:var(--muted);">Clique num KPI ou num gestor para filtrar a lista abaixo · clique numa corretora pra ver o detalhe</p>
+        </div>
+        <button id="btnCloseConquista" class="btn-reset">Fechar ✕</button>
+      </div>
+
+      <div class="exec-grid" id="cqgKpiRow" style="margin-top:16px; margin-bottom:16px;"></div>
+      <div id="cqgGestorGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px,1fr)); gap:14px; margin-bottom:18px;"></div>
+
+      <div class="filter-bar" style="margin-bottom:0;">
+        <div class="f-group"><label>Gestor</label><select id="cqgFGestor"><option value="">Todos</option></select></div>
+        <div class="f-group"><label>Classificação</label><select id="cqgFClass"><option value="">Todas</option></select></div>
+        <div class="f-group"><label>Status</label><select id="cqgFEleg"><option value="">Todos</option><option value="elegivel">Elegível</option><option value="falta">Falta vidas</option><option value="naoeleg">Não elegível</option></select></div>
+        <div class="f-group"><label>Buscar corretora</label><input type="text" id="cqgBusca" placeholder="Nome ou código..."></div>
+        <button class="btn-reset" id="cqgBtnLimpar">↺ Limpar filtros</button>
+      </div>
+
+      <div class="table-wrap" style="margin-top:12px;">
+        <table>
+          <thead><tr><th>Código</th><th>Corretora</th><th>Gestor</th><th class="num">Vidas (trim.)</th><th>Classificação</th><th class="num">R$/vida</th><th class="num">Bônus (75%)</th><th>Status</th></tr></thead>
+          <tbody id="cqgTableBody"></tbody>
+        </table>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <button class="btn-reset" id="cqgPagPrev">← Anterior</button>
+        <div class="result-count" id="cqgPagInfo"></div>
+        <button class="btn-reset" id="cqgPagNext">Próxima →</button>
+      </div>
+    </div>
+  </div>
+
 
   <!-- ===================== VIEW 0: VISÃO GERAL ===================== -->
   <div class="view-panel active" id="viewOverview">
@@ -944,6 +986,7 @@
         <button class="vs-btn" data-mode="assessorias">Assessorias</button>
       </div>
       <button class="btn-reset" id="btnReset">Limpar filtros</button>
+      <button class="btn-reset" id="btnOpenConquista" style="background:linear-gradient(135deg, var(--accent-coral), var(--accent-gold)); color:#fff; border:none; font-weight:700;"><i class=ic-trophy></i> Conquista Premiada</button>
       <div class="result-count" id="resultCount"></div>
     </div>
 
@@ -952,6 +995,7 @@
     <!-- ===== VISÃO EXECUTIVA (novo) ===== -->
     <div id="execSection">
       <div class="exec-grid" id="execKpiRow"></div>
+
 
       <div class="grid-2 even">
         <div class="panel">
@@ -2019,6 +2063,17 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (calc.pct >= 30) return `Distância moderada até ${calc.nextLabel} — acompanhamento de rotina ajuda a manter a evolução.`;
     return `Ainda distante de ${calc.nextLabel} — sem urgência imediata, mas vale monitorar a evolução mês a mês.`;
   }
+  // Elegibilidade completa da campanha: precisa ter alcançado alguma faixa (>=30 vidas,
+  // "hasTier") E não ter caído mais de 20% vs o trimestre anterior (mesma regra/flag que
+  // computePeriodElegRank já usa pro período corrente — reaproveitada aqui, não duplicada).
+  function computeConquistaFull(d){
+    const cq = computeConquista(d);
+    const campaignTri = PERIOD_DEFS.trimestre[PERIOD_DEFS.trimestre.length - 1];
+    const elCalc = computePeriodElegRank(d, campaignTri.months);
+    const hasTier = cq.label !== 'Não Classificado';
+    const isEligible = hasTier && elCalc.el === 1;
+    return Object.assign({ hasTier, isEligible }, cq);
+  }
 
   let DATA = window.__DASH_DATA__.DATA;
   let RANKDATA = window.__DASH_DATA__.RANKDATA;
@@ -2329,6 +2384,187 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const keys=['name','n','vidas','eleg','pctEl','ating'];
     th.addEventListener('click',()=>{ const k=keys[i]; if(assCurrentSort===k) assCurrentDir*=-1; else {assCurrentSort=k; assCurrentDir=(k==='name'?1:-1);} renderAssRankTable(aggregateAssessorias(applyFilters())); });
   });
+
+  // Conquista Premiada — visão geral da campanha (independe dos filtros da tela;
+  // sempre reflete a base inteira, como um placar fixo por gestor).
+  // Estado dos filtros do modal Conquista Premiada (independente dos filtros da tela)
+  let cqgFilterGestor = '', cqgFilterClass = '', cqgFilterEleg = '', cqgBusca = '', cqgPage = 0;
+  const CQG_PP = 15;
+
+  function conquistaRowsAll(){
+    return DATA.map(d => Object.assign({d}, computeConquistaFull(d)));
+  }
+
+  function applyConquistaFilters(rows){
+    const q = cqgBusca.trim().toLowerCase();
+    return rows.filter(r => {
+      if (cqgFilterGestor && r.d.g !== cqgFilterGestor) return false;
+      if (cqgFilterClass && r.label !== cqgFilterClass) return false;
+      if (cqgFilterEleg === 'elegivel' && !r.isEligible) return false;
+      if (cqgFilterEleg === 'falta' && !(r.hasTier && !r.isEligible)) return false;
+      if (cqgFilterEleg === 'naoeleg' && r.hasTier) return false;
+      if (q && !(r.d.n.toLowerCase().includes(q) || r.d.c.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }
+
+  function conquistaStatusTag(r){
+    if (r.isEligible) return '<span class="tag elig">Elegível</span>';
+    if (r.hasTier) return '<span class="tag" style="background:rgba(255,184,28,.18); color:#a5690f;">Falta vidas</span>';
+    return '<span class="tag noelig">Não elegível</span>';
+  }
+
+  function renderConquistaTable(){
+    const rows = conquistaRowsAll();
+    const filtered = applyConquistaFilters(rows).sort((a,b)=>b.total-a.total);
+    const totalPag = Math.max(1, Math.ceil(filtered.length/CQG_PP));
+    if (cqgPage >= totalPag) cqgPage = totalPag - 1;
+    if (cqgPage < 0) cqgPage = 0;
+    const pageRows = filtered.slice(cqgPage*CQG_PP, (cqgPage+1)*CQG_PP);
+    document.getElementById('cqgTableBody').innerHTML = pageRows.map(r => `
+      <tr class="clickable" data-c="${r.d.c}">
+        <td style="color:var(--muted); font-size:11.5px;">${r.d.c}</td>
+        <td class="name">${r.d.n}</td>
+        <td>${r.d.g}</td>
+        <td class="num">${fmt0(r.total)}</td>
+        <td>${r.label}</td>
+        <td class="num">R$ ${fmt0(r.rate)}</td>
+        <td class="num">R$ ${fmt0(r.bonusExec)}</td>
+        <td>${conquistaStatusTag(r)}</td>
+      </tr>`).join('') || `<tr><td colspan="8" style="text-align:center; color:var(--muted); padding:16px;">Nenhuma corretora encontrada com esses filtros.</td></tr>`;
+    document.getElementById('cqgPagInfo').textContent = `Página ${cqgPage+1} de ${totalPag} (${filtered.length} resultado(s))`;
+    document.querySelectorAll('#cqgTableBody tr[data-c]').forEach(tr => {
+      tr.addEventListener('click', () => { closeConquistaModal(); showDetail(tr.dataset.c); });
+    });
+  }
+
+  function renderConquistaGeral(){
+    const rows = conquistaRowsAll();
+    const n = rows.length;
+    const elegiveis = rows.filter(r => r.isEligible);
+    const faltaVidas = rows.filter(r => r.hasTier && !r.isEligible);
+    const naoEleg = rows.filter(r => !r.hasTier);
+    const bonusTotal = rows.reduce((s,r)=>s + (r.hasTier ? r.bonusFull : 0), 0);
+    const bonusExecTotal = rows.reduce((s,r)=>s + (r.hasTier ? r.bonusExec : 0), 0);
+
+    document.getElementById('cqgPeriodo').textContent = rows[0] ? rows[0].campaignLabel : '—';
+
+    const kpis = [
+      {bar:'#1D33A8', ico:'<i class=ic-users></i>', icoBg:'rgba(29,51,168,.10)', color:'#101E63',
+       label:'Base Total', value: fmt0(n), pct:'com histórico no trimestre', eleg:''},
+      {bar:'#16B87A', ico:'<i class=ic-check></i>', icoBg:'rgba(22,184,122,.12)', color:'#16B87A',
+       label:'Elegíveis', value: fmt0(elegiveis.length), pct: n?(elegiveis.length/n*100).toFixed(1)+'% da base':'0%', eleg:'elegivel'},
+      {bar:'#FFB81C', ico:'<i class=ic-trend></i>', icoBg:'rgba(255,184,28,.16)', color:'#a5690f',
+       label:'Falta Vidas', value: fmt0(faltaVidas.length), pct:'classificadas, mas caíram vs. trimestre anterior', eleg:'falta'},
+      {bar:'#F5364A', ico:'<i class=ic-alarm></i>', icoBg:'rgba(245,54,74,.10)', color:'#F5364A',
+       label:'Não Elegíveis', value: fmt0(naoEleg.length), pct:'abaixo do mínimo da campanha (30 vidas)', eleg:'naoeleg'},
+      {bar:'linear-gradient(90deg,#F26B21,#FFB81C)', ico:'<i class=ic-award></i>', icoBg:'rgba(242,107,33,.12)', color:'#F26B21',
+       label:'Bônus Est. (75% exec.)', value: 'R$ ' + fmt0(bonusExecTotal), pct: 'total corretoras: R$ ' + fmt0(bonusTotal), eleg:''},
+    ];
+    document.getElementById('cqgKpiRow').innerHTML = kpis.map((k,i) => `
+      <div class="exec-kpi cqg-kpi ${k.eleg?'clickable':''}" data-cqi="${i}" style="--ek-bar:${k.bar}; --ek-ico-bg:${k.icoBg}; --ek-color:${k.color};" ${k.eleg?'title="Clique para filtrar a lista abaixo"':''}>
+        <div class="ek-ico">${k.ico}</div>
+        <div class="ek-label">${k.label}</div>
+        <div class="ek-value">${k.value}</div>
+        <div class="ek-pct">${k.pct}</div>
+      </div>`).join('');
+    document.querySelectorAll('#cqgKpiRow .cqg-kpi[data-cqi]').forEach(el => {
+      const k = kpis[Number(el.dataset.cqi)];
+      if (!k || !k.eleg) return;
+      el.addEventListener('click', () => {
+        cqgFilterEleg = (cqgFilterEleg === k.eleg) ? '' : k.eleg;
+        document.getElementById('cqgFEleg').value = cqgFilterEleg;
+        cqgPage = 0;
+        renderConquistaTable();
+      });
+    });
+
+    const gestorGrid = document.getElementById('cqgGestorGrid');
+    // "Sem Gestor Atribuído" fica de fora dos cards (mas continua nos KPIs gerais acima).
+    const gestorNames = [...new Set(DATA.map(d=>d.g))].filter(g => g !== 'Sem Gestor Atribuído').sort();
+    gestorGrid.innerHTML = gestorNames.map(g => {
+      const gRows = rows.filter(r => r.d.g === g);
+      const gEleg = gRows.filter(r => r.isEligible);
+      const gFalta = gRows.filter(r => r.hasTier && !r.isEligible);
+      const gNao = gRows.filter(r => !r.hasTier);
+      const gBonusExec = gRows.reduce((s,r)=>s+(r.hasTier?r.bonusExec:0),0);
+      const cor = GESTOR_COLORS[g] || '#94a3b8';
+      const top3 = [...gRows].sort((a,b)=>b.total-a.total).slice(0,3);
+      const selected = cqgFilterGestor === g;
+      return `<div class="cqg-card${selected?' selected':''}" data-g="${g}" style="background:var(--card); border-radius:12px; padding:14px 16px; border-top:3px solid ${cor}; box-shadow:0 1px 3px rgba(16,30,99,.06); cursor:pointer;">
+        <div style="font-size:14px; font-weight:800; color:${cor}; margin-bottom:8px;">${g}</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+          <div style="background:var(--bg); border-radius:6px; padding:6px 8px;"><div style="font-size:14px; font-weight:800; color:#16B87A;">${gEleg.length}</div><div style="font-size:9px; color:var(--muted); text-transform:uppercase;">Elegíveis</div></div>
+          <div style="background:var(--bg); border-radius:6px; padding:6px 8px;"><div style="font-size:14px; font-weight:800; color:#a5690f;">${gFalta.length}</div><div style="font-size:9px; color:var(--muted); text-transform:uppercase;">Falta Vidas</div></div>
+          <div style="background:var(--bg); border-radius:6px; padding:6px 8px;"><div style="font-size:14px; font-weight:800; color:#F5364A;">${gNao.length}</div><div style="font-size:9px; color:var(--muted); text-transform:uppercase;">Não Eleg.</div></div>
+          <div style="background:var(--bg); border-radius:6px; padding:6px 8px;"><div style="font-size:11px; font-weight:800; color:${cor};">R$ ${fmt0(gBonusExec)}</div><div style="font-size:9px; color:var(--muted); text-transform:uppercase;">Bônus (75%)</div></div>
+        </div>
+        ${top3.length ? `<div style="font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin:8px 0 4px;">Top 3 corretoras</div>` + top3.map((t,i) => `
+          <div class="cqg-top3-row" data-c="${t.d.c}" style="background:var(--bg); border-radius:6px; padding:6px 8px; margin-bottom:4px; border-left:3px solid ${i===0?cor:'var(--line)'}; cursor:pointer; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:10px; font-weight:700; color:${i===0?cor:'var(--muted)'}; width:14px;">${i+1}º</span>
+            <div style="flex:1; overflow:hidden;">
+              <div style="font-size:10.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.d.n}</div>
+              <div style="font-size:10px; color:var(--muted);">${t.label} · ${fmt0(t.total)} vidas</div>
+            </div>
+          </div>`).join('') : '<div style="font-size:11px; color:var(--muted);">Sem produção no trimestre.</div>'}
+      </div>`;
+    }).join('');
+    gestorGrid.querySelectorAll('.cqg-top3-row').forEach(el => {
+      el.addEventListener('click', (e) => { e.stopPropagation(); closeConquistaModal(); showDetail(el.dataset.c); });
+    });
+    gestorGrid.querySelectorAll('.cqg-card').forEach(el => {
+      el.addEventListener('click', () => {
+        const g = el.dataset.g;
+        cqgFilterGestor = (cqgFilterGestor === g) ? '' : g;
+        document.getElementById('cqgFGestor').value = cqgFilterGestor;
+        cqgPage = 0;
+        renderConquistaGeral();
+      });
+    });
+
+    // popula os selects de filtro (uma vez basta, mas é barato refazer sempre)
+    const selGestorEl = document.getElementById('cqgFGestor');
+    const curGestorVal = selGestorEl.value;
+    selGestorEl.innerHTML = '<option value="">Todos</option>' + gestorNames.map(g=>`<option value="${g}">${g}</option>`).join('');
+    selGestorEl.value = cqgFilterGestor || curGestorVal || '';
+    const classesPresent = [...new Set(rows.filter(r=>r.hasTier).map(r=>r.label))];
+    const classOrderAll = CONQUISTA_METRO.map(t=>t.label);
+    const classesSorted = classOrderAll.filter(c => classesPresent.includes(c));
+    const selClassEl = document.getElementById('cqgFClass');
+    const curClassVal = selClassEl.value;
+    selClassEl.innerHTML = '<option value="">Todas</option>' + classesSorted.map(c=>`<option value="${c}">${c}</option>`).join('');
+    selClassEl.value = cqgFilterClass || curClassVal || '';
+
+    renderConquistaTable();
+  }
+
+  function closeConquistaModal(){
+    document.getElementById('conquistaModalOverlay').style.display = 'none';
+  }
+  document.getElementById('btnOpenConquista').addEventListener('click', () => {
+    document.getElementById('conquistaModalOverlay').style.display = 'flex';
+    renderConquistaGeral();
+  });
+  document.getElementById('btnCloseConquista').addEventListener('click', closeConquistaModal);
+  document.getElementById('conquistaModalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'conquistaModalOverlay') closeConquistaModal();
+  });
+  document.getElementById('cqgFGestor').addEventListener('change', (e) => { cqgFilterGestor = e.target.value; cqgPage = 0; renderConquistaGeral(); });
+  document.getElementById('cqgFClass').addEventListener('change', (e) => { cqgFilterClass = e.target.value; cqgPage = 0; renderConquistaTable(); });
+  document.getElementById('cqgFEleg').addEventListener('change', (e) => { cqgFilterEleg = e.target.value; cqgPage = 0; renderConquistaTable(); });
+  document.getElementById('cqgBusca').addEventListener('input', window.debounce(() => {
+    cqgBusca = document.getElementById('cqgBusca').value; cqgPage = 0; renderConquistaTable();
+  }, 250));
+  document.getElementById('cqgBtnLimpar').addEventListener('click', () => {
+    cqgFilterGestor = ''; cqgFilterClass = ''; cqgFilterEleg = ''; cqgBusca = ''; cqgPage = 0;
+    document.getElementById('cqgFGestor').value = '';
+    document.getElementById('cqgFClass').value = '';
+    document.getElementById('cqgFEleg').value = '';
+    document.getElementById('cqgBusca').value = '';
+    renderConquistaGeral();
+  });
+  document.getElementById('cqgPagPrev').addEventListener('click', () => { cqgPage = Math.max(0, cqgPage-1); renderConquistaTable(); });
+  document.getElementById('cqgPagNext').addEventListener('click', () => { cqgPage = cqgPage+1; renderConquistaTable(); });
 
   function renderExecutive(filtered){
     const periodMonths = getPeriodMonths();
