@@ -1633,15 +1633,30 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
 
   renderMetaJunho();
 
-  window.getMetaJunhoData = function(){
-    return { teams: MJ_TEAMS, benchmark: MJ_BENCHMARK, corretoras: MJ_CORRETORAS, naoAtribuido: MJ_NAO_ATRIBUIDO };
+  window.getMetaJunhoData = function(month){
+    // Com "month" informado e diferente do mês ao vivo, devolve os times já gravados
+    // pra aquele mês específico (pra comparação correta ao corrigir um mês passado).
+    // benchmark/corretoras/não-atribuído não são guardados por mês, então continuam
+    // sendo sempre os "atuais" (limitação conhecida).
+    const teams = (month && MJ_TEAMS_BY_MONTH[month]) ? MJ_TEAMS_BY_MONTH[month] : MJ_TEAMS;
+    return { teams, benchmark: MJ_BENCHMARK, corretoras: MJ_CORRETORAS, naoAtribuido: MJ_NAO_ATRIBUIDO };
   };
   window.updateMetaJunhoData = function(newData){
-    MJ_TEAMS = newData.teams;
-    MJ_TEAMS_BY_MONTH[currentMonth] = MJ_TEAMS;
-    MJ_BENCHMARK = newData.benchmark;
-    if (newData.corretoras) MJ_CORRETORAS = newData.corretoras;
-    if (newData.naoAtribuido) MJ_NAO_ATRIBUIDO = newData.naoAtribuido;
+    // Grava sempre no mês que a planilha realmente representa (detectedMonth),
+    // não sempre em "currentMonth" — senão um arquivo de mês passado sobrescreveria
+    // silenciosamente o mês atual. Só vira o "estado ao vivo" (currentMonth, benchmark,
+    // corretoras, não-atribuído) se for o mês mais recente já conhecido.
+    const targetMonth = newData.detectedMonth || currentMonth;
+    const latest = Object.keys(MJ_TEAMS_BY_MONTH).sort().pop();
+    const isLive = !latest || targetMonth >= latest;
+    MJ_TEAMS_BY_MONTH[targetMonth] = newData.teams;
+    if (isLive){
+      currentMonth = targetMonth;
+      MJ_BENCHMARK = newData.benchmark;
+      if (newData.corretoras) MJ_CORRETORAS = newData.corretoras;
+      if (newData.naoAtribuido) MJ_NAO_ATRIBUIDO = newData.naoAtribuido;
+    }
+    if (targetMonth === currentMonth) MJ_TEAMS = MJ_TEAMS_BY_MONTH[currentMonth];
     if (!MJ_TEAMS[currentTeam]) currentTeam = Object.keys(MJ_TEAMS)[0];
     renderMetaJunho();
   };
@@ -1662,6 +1677,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     renderMetaJunho();
   };
   window.getCurrentMonth = function(){ return currentMonth; };
+  // Mês cronologicamente mais recente já importado — independente de qual mês
+  // o usuário está vendo no momento no dropdown "Mês de referência".
+  window.getLatestKnownMonth = function(){ return Object.keys(MJ_TEAMS_BY_MONTH).sort().pop(); };
   window.getPendenciasData = function(){ return {pme: PENDENCIAS_PME, pf: PENDENCIAS_PF}; };
   window.getPublishableState = function(){
     return {
@@ -4350,9 +4368,28 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   function sheetRows(sheet){ return XLSX.utils.sheet_to_json(sheet, {header:1, defval:null, raw:true}); }
   function num(v){ const n = Number(v); return isNaN(n) ? 0 : n; }
 
+  const META_MONTH_NAME_TO_NUM = {
+    'JANEIRO':'01','FEVEREIRO':'02','MARÇO':'03','MARCO':'03','ABRIL':'04','MAIO':'05','JUNHO':'06',
+    'JULHO':'07','AGOSTO':'08','SETEMBRO':'09','OUTUBRO':'10','NOVEMBRO':'11','DEZEMBRO':'12',
+  };
+  // Detecta o mês real da planilha pelo nome da aba ("NDI SP - META JUNHO" -> "2026-06"),
+  // em vez de assumir que todo arquivo enviado é sempre do mês corrente. O ano usa como
+  // referência o mês mais recente já conhecido (fallbackYearMonth) — simplificação
+  // razoável, já que corretoras não corrigem meses de anos diferentes na prática.
+  function detectMetaMonth(workbook, fallbackYearMonth){
+    const name = workbook.SheetNames.find(n => n.toUpperCase().indexOf('NDI SP - META') === 0);
+    if (!name || !fallbackYearMonth) return fallbackYearMonth;
+    const monthWord = name.toUpperCase().replace('NDI SP - META', '').trim();
+    const monthNum = META_MONTH_NAME_TO_NUM[monthWord];
+    if (!monthNum) return fallbackYearMonth;
+    const year = fallbackYearMonth.split('-')[0];
+    return year + '-' + monthNum;
+  }
+
   function parseMetaJunhoWorkbook(workbook){
     const metaSheet = findSheet(workbook, 'NDI SP - META');
     if (!metaSheet) throw new Error('Não encontrei a aba "NDI SP - META..." no arquivo.');
+    const detectedMonth = detectMetaMonth(workbook, (window.getLatestKnownMonth ? window.getLatestKnownMonth() : null) || (window.getCurrentMonth ? window.getCurrentMonth() : null));
 
     const metaRows = sheetRows(metaSheet);
     const teams = {};
@@ -4424,7 +4461,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       Object.keys(corretoras).forEach(g => corretoras[g].sort((a,b)=>b.total-a.total));
     }
 
-    return {teams, benchmark, corretoras, naoAtribuido};
+    return {teams, benchmark, corretoras, naoAtribuido, detectedMonth};
   }
 
   function parseEligibilidadeWorkbook(workbook){
@@ -4503,9 +4540,19 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
 
   function fmtN(n){ return Math.round(n).toLocaleString('pt-BR'); }
 
+  const META_MONTH_LABELS = {'01':'Janeiro','02':'Fevereiro','03':'Março','04':'Abril','05':'Maio','06':'Junho','07':'Julho','08':'Agosto','09':'Setembro','10':'Outubro','11':'Novembro','12':'Dezembro'};
+  function metaMonthLabel(yearMonth){
+    if (!yearMonth) return '';
+    const [y,m] = yearMonth.split('-');
+    return (META_MONTH_LABELS[m] || m) + '/' + y;
+  }
   function diffMetaJunho(newData){
-    const old = window.getMetaJunhoData();
+    const old = window.getMetaJunhoData(newData.detectedMonth);
     let html = '<h3 style="font-size:14px;color:var(--navy);margin-bottom:8px;"><i class=ic-chart></i> Desempenho Comercial — Resumo das mudanças</h3>';
+    const latestKnownMonth = window.getLatestKnownMonth ? window.getLatestKnownMonth() : window.getCurrentMonth();
+    if (newData.detectedMonth && latestKnownMonth && newData.detectedMonth !== latestKnownMonth){
+      html += `<div style="font-size:12.5px; margin-bottom:10px; padding:10px 14px; border-radius:8px; background:#fff7ed; color:#9a3412;"><i class=ic-warn></i> Este arquivo é de <b>${metaMonthLabel(newData.detectedMonth)}</b> — não é o mês mais recente (<b>${metaMonthLabel(latestKnownMonth)}</b>). Vou corrigir só o histórico de ${metaMonthLabel(newData.detectedMonth)} no Desempenho Comercial; Elegibilidade e Ranking do mês atual não serão alterados.</div>`;
+    }
     html += '<table style="width:100%;font-size:12.5px;margin-bottom:10px;border-collapse:collapse;"><thead><tr style="border-bottom:1px solid var(--line);"><th style="text-align:left;padding:4px;">Time</th><th style="text-align:right;padding:4px;">Meta (atual→novo)</th><th style="text-align:right;padding:4px;">Integrado (atual→novo)</th></tr></thead><tbody>';
     Object.keys(newData.teams).forEach(t => {
       const oldT = (old.teams[t] && old.teams[t].total) || {meta:0,int:0};
@@ -5044,21 +5091,31 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Processando Desempenho Comercial...</p>';
         pendingMeta = parseMetaJunhoWorkbook(metaWb);
         summaryHtml += diffMetaJunho(pendingMeta);
-        // O mesmo arquivo alimenta o Ranking de Vendas (mês atual) — mesma fonte, sem divergência
-        try {
-          pendingRankCur = parseRankingWorkbook(metaWb);
-          const totR = pendingRankCur.reduce((s,r)=>s+r.t,0);
-          summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Ranking de Vendas (mês atual) — ${pendingRankCur.length} corretoras, ${Math.round(totR).toLocaleString('pt-BR')} vidas (SP, sem Rio/Hapvida), do mesmo arquivo.</div>`;
-        } catch(e){
-          summaryHtml += `<div style="font-size:12px; margin-top:6px; color:var(--muted);">Ranking não atualizado: ${e.message}</div>`;
-        }
-        pendingEligBridge = extractEligibilidadeDataFromExport(metaWb);
-        if (pendingEligBridge && window.getEligibilidadeData){
-          const codigosArquivo = new Set();
-          Object.values(pendingEligBridge).forEach(g => (g.corretoras||[]).forEach(c => codigosArquivo.add(c.c)));
-          const eligData = window.getEligibilidadeData();
-          const matchCount = eligData.filter(d => codigosArquivo.has(d.c)).length;
-          summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Elegibilidade — histórico do mês será gravado em <b>${matchCount}</b> das ${eligData.length} corretoras (Cauda Longa), direto pela planilha manual.</div>`;
+        // Planilha de mês passado (ex.: corrigindo Junho) só atualiza o histórico daquele
+        // mês — as bridges de Ranking/Elegibilidade abaixo assumem "mês corrente" (sempre
+        // mexem no último índice de dados), então só rodam se for o mês mais recente.
+        const latestKnownMonth = window.getLatestKnownMonth ? window.getLatestKnownMonth() : window.getCurrentMonth();
+        const isLiveMonthUpload = !pendingMeta.detectedMonth || pendingMeta.detectedMonth === latestKnownMonth;
+        if (isLiveMonthUpload){
+          // O mesmo arquivo alimenta o Ranking de Vendas (mês atual) — mesma fonte, sem divergência
+          try {
+            pendingRankCur = parseRankingWorkbook(metaWb);
+            const totR = pendingRankCur.reduce((s,r)=>s+r.t,0);
+            summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Ranking de Vendas (mês atual) — ${pendingRankCur.length} corretoras, ${Math.round(totR).toLocaleString('pt-BR')} vidas (SP, sem Rio/Hapvida), do mesmo arquivo.</div>`;
+          } catch(e){
+            summaryHtml += `<div style="font-size:12px; margin-top:6px; color:var(--muted);">Ranking não atualizado: ${e.message}</div>`;
+          }
+          pendingEligBridge = extractEligibilidadeDataFromExport(metaWb);
+          if (pendingEligBridge && window.getEligibilidadeData){
+            const codigosArquivo = new Set();
+            Object.values(pendingEligBridge).forEach(g => (g.corretoras||[]).forEach(c => codigosArquivo.add(c.c)));
+            const eligData = window.getEligibilidadeData();
+            const matchCount = eligData.filter(d => codigosArquivo.has(d.c)).length;
+            summaryHtml += `<div style="font-size:12.5px; margin-top:6px; color:var(--blue);">Elegibilidade — histórico do mês será gravado em <b>${matchCount}</b> das ${eligData.length} corretoras (Cauda Longa), direto pela planilha manual.</div>`;
+          }
+        } else {
+          pendingRankCur = null;
+          pendingEligBridge = null;
         }
       }
       if (corretorasWb && !metaWb){
