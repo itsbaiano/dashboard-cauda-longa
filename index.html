@@ -1144,11 +1144,11 @@
 
       <div class="grid-2 even">
         <div class="panel">
-          <h2>Elegibilidade por Gestor</h2>
+          <h2 id="elGestorTitle">Elegibilidade por Gestor</h2>
           <div class="panel-sub" id="elGestorSub">% de corretoras elegíveis na carteira de cada gestor — clique numa barra para filtrar a aba inteira</div>
           <div class="chart-box"><canvas id="chartElGestor"></canvas></div>
         </div>
-        <div class="panel">
+        <div class="panel" id="heatmapPanel">
           <h2>Mapa de Calor — Gestor × Atingimento da Meta</h2>
           <div class="panel-sub" id="heatmapSub">Quantas corretoras de cada gestor estão em cada faixa — clique numa célula para ver a lista</div>
           <div style="overflow-x:auto;"><table class="hm-table" id="heatmapTable"></table></div>
@@ -1156,7 +1156,7 @@
         </div>
       </div>
 
-      <div class="grid-2 even">
+      <div class="grid-2 even" id="execFunnelFaixasRow">
         <div class="panel">
           <h2>Funil de Elegibilidade</h2>
           <div class="panel-sub" id="funnelSub">Da base total até as elegíveis — clique numa etapa para ver as corretoras</div>
@@ -1170,7 +1170,7 @@
         </div>
       </div>
 
-      <div class="grid-2 even">
+      <div class="grid-2 even" id="execProxLossRow">
         <div class="panel">
           <h2 id="proxTitle">Top 10 Mais Próximas da Elegibilidade</h2>
           <div class="panel-sub">Não elegíveis com maior atingimento — o menor esforço para o próximo resultado · clique para ver o detalhe</div>
@@ -1183,10 +1183,21 @@
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="execEvolPanel">
         <h2>Evolução da Elegibilidade <span class="recalc-tag">Recalculado</span></h2>
         <div class="panel-sub">% de corretoras elegíveis por trimestre, recalculado sobre o filtro atual. A partir do 3TRI26 aplica a regra vigente (meta = trimestre anterior × 0,80 — não cair mais de 20%); trimestres anteriores usam a regra da época (× 1,10). Valores históricos podem divergir da coluna oficial, que vale apenas para o ciclo vigente.</div>
         <div class="chart-box"><canvas id="chartElEvolucao"></canvas></div>
+      </div>
+
+      <div class="panel" id="reactTablePanel" style="display:none;">
+        <h2>Corretoras em Oportunidade de Reativação</h2>
+        <div class="panel-sub">Ordenado pelo maior potencial (vidas históricas) · clique numa linha para ver o detalhe da corretora</div>
+        <div class="table-wrap" id="reactTableWrap" style="max-height:480px; overflow-y:auto;">
+          <table>
+            <thead><tr><th>Corretora</th><th>Gestor</th><th class="num">Vidas Históricas</th><th>Inativa há</th></tr></thead>
+            <tbody id="reactTableBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -2776,6 +2787,94 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('cqgPagNext').addEventListener('click', () => { cqgPage = cqgPage+1; renderConquistaTable(); });
 
   function renderExecutive(filtered){
+    // Com "Apenas oportunidades de reativação" marcado, os painéis de Elegibilidade
+    // (funil, faixas, heatmap, evolução, top próximas/perdidas) ficam incoerentes —
+    // por definição essas corretoras têm zero produção recente, então tudo ali daria
+    // zero. Troca por um resumo focado em reativação, direto no topo (sem precisar
+    // rolar até a tabela "Base de Corretoras" lá embaixo pra achar a informação real).
+    const onlyReact = document.getElementById('fReact').checked;
+    if (onlyReact){
+      document.getElementById('heatmapPanel').style.display = 'none';
+      document.getElementById('execFunnelFaixasRow').style.display = 'none';
+      document.getElementById('execProxLossRow').style.display = 'none';
+      document.getElementById('execEvolPanel').style.display = 'none';
+      document.getElementById('reactTablePanel').style.display = '';
+
+      const n = filtered.length;
+      const totalVidas = filtered.reduce((s,d)=>s+d.tot,0);
+      const media = n ? totalVidas / n : 0;
+      const maisPotencial = n ? filtered.reduce((a,b)=> a.tot > b.tot ? a : b) : null;
+      const mediaInativa = n ? filtered.reduce((s,d)=>s+monthsSinceLastSale(d),0) / n : 0;
+
+      const kpiDefs = [
+        { bar:'#F26B21', ico:'<i class=ic-target></i>', icoBg:'rgba(242,107,33,.12)', color:'#F26B21',
+          label:'Corretoras em Oportunidade', value: fmt0(n), pct:'histórico relevante, zero produção recente',
+          list: filtered, title:'Oportunidades de reativação' },
+        { bar:'#1D33A8', ico:'<i class=ic-trend></i>', icoBg:'rgba(29,51,168,.10)', color:'#101E63',
+          label:'Vidas Históricas em Potencial', value: fmt0(totalVidas), pct: n?('média de '+fmt0(media)+' por corretora'):'0' },
+        { bar:'#16B87A', ico:'<i class=ic-award></i>', icoBg:'rgba(22,184,122,.12)', color:'#16B87A',
+          label:'Maior Potencial Único', value: maisPotencial?fmt0(maisPotencial.tot):'—', pct: maisPotencial?maisPotencial.n:'—',
+          list: maisPotencial ? [maisPotencial] : null, title: maisPotencial ? maisPotencial.n : '' },
+        { bar:'#FFB81C', ico:'<i class=ic-alarm></i>', icoBg:'rgba(255,184,28,.16)', color:'#a5690f',
+          label:'Tempo Médio Inativo', value: mediaInativa.toFixed(1)+' meses', pct:'desde a última venda' },
+      ];
+      document.getElementById('execKpiRow').innerHTML = kpiDefs.map((k,i)=>`
+        <div class="exec-kpi ${k.list?'clickable':''}" data-i="${i}" style="--ek-bar:${k.bar}; --ek-ico-bg:${k.icoBg}; --ek-color:${k.color};" ${k.list?'title="Clique para ver as corretoras"':''}>
+          <div class="ek-ico">${k.ico}</div>
+          <div class="ek-label">${k.label}</div>
+          <div class="ek-value">${k.value}</div>
+          <div class="ek-pct">${k.pct}</div>
+        </div>`).join('');
+      document.querySelectorAll('#execKpiRow .exec-kpi[data-i]').forEach(el => {
+        const k = kpiDefs[Number(el.dataset.i)];
+        if (!k || !k.list) return;
+        el.addEventListener('click', () => {
+          if (k.list.length === 1) showDetail(k.list[0].c);
+          else showChartDrilldown(k.title, k.list);
+        });
+      });
+
+      destroyChart('elGestor');
+      const reactByGestor = {};
+      filtered.forEach(d => { (reactByGestor[d.g] = reactByGestor[d.g] || []).push(d); });
+      const reactGestorNames = Object.keys(reactByGestor).sort((a,b)=>reactByGestor[b].length-reactByGestor[a].length);
+      document.getElementById('elGestorTitle').textContent = 'Oportunidades de Reativação por Gestor';
+      document.getElementById('elGestorSub').textContent = `${fmt0(n)} corretoras no total — clique numa barra para filtrar por gestor`;
+      charts.elGestor = new Chart(document.getElementById('chartElGestor'), {
+        type:'bar',
+        data:{ labels: reactGestorNames.map(shortGestor), datasets:[{ data: reactGestorNames.map(g=>reactByGestor[g].length),
+          backgroundColor: reactGestorNames.map(g=>GESTOR_COLORS[g]||'#94a3b8'), borderRadius:7, maxBarThickness:34 }] },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          onClick:(evt,els)=>{ if(!els||!els.length) return; selGestor.value = reactGestorNames[els[0].index]; render(); },
+          onHover:(evt,els)=>{ if(evt&&evt.native&&evt.native.target) evt.native.target.style.cursor=(els&&els.length)?'pointer':'default'; },
+          plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>{
+            const g = reactGestorNames[c.dataIndex]; const l = reactByGestor[g];
+            const potg = l.reduce((s,d)=>s+d.tot,0);
+            return [`${l.length} oportunidade(s)`, `${fmt0(potg)} vidas em potencial`, 'Clique para filtrar'];
+          }}}},
+          scales:{ x:{beginAtZero:true, grid:{color:'#eef1f6'}}, y:{grid:{display:false}, ticks:{font:{size:11, weight:'600'}}} } }
+      });
+
+      const sortedReact = [...filtered].sort((a,b)=>b.tot-a.tot);
+      document.getElementById('reactTableBody').innerHTML = sortedReact.length ? sortedReact.map(d => `
+        <tr class="clickable" data-c="${d.c}">
+          <td class="name">${d.n}</td>
+          <td>${shortGestor(d.g)}</td>
+          <td class="num">${fmt0(d.tot)}</td>
+          <td>${monthsSinceLastSale(d)} meses</td>
+        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px;">Nenhuma corretora encontrada com esses filtros.</td></tr>`;
+      document.querySelectorAll('#reactTableBody tr[data-c]').forEach(tr => tr.addEventListener('click', () => showDetail(tr.dataset.c)));
+
+      window.__execInsights = n ? [{ico:'<i class=ic-target></i>', text:`<b>${fmt0(n)} corretoras</b> com histórico relevante estão sem vender há pelo menos 3 meses — <b>${fmt0(totalVidas)} vidas</b> em potencial de reativação.`}] : [];
+      return;
+    }
+    document.getElementById('heatmapPanel').style.display = '';
+    document.getElementById('execFunnelFaixasRow').style.display = '';
+    document.getElementById('execProxLossRow').style.display = '';
+    document.getElementById('execEvolPanel').style.display = '';
+    document.getElementById('reactTablePanel').style.display = 'none';
+    document.getElementById('elGestorTitle').textContent = 'Elegibilidade por Gestor';
+
     const periodMonths = getPeriodMonths();
     const periodType = document.getElementById('fPeriodType').value;
     const periodIdx = Number(document.getElementById('fPeriodValue').value);
