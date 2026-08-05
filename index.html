@@ -759,8 +759,6 @@
     <div style="margin-top:16px; padding:0 4px;">
       <label style="font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:rgba(255,255,255,.55); display:block; margin-bottom:6px;">Mês de referência</label>
       <select id="globalMonthSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.08); color:#fff; font-size:13px; font-weight:600;">
-        <option value="2026-06" style="color:#0A1A3A; background:#fff;">Junho 2026</option>
-        <option value="2026-07" selected style="color:#0A1A3A; background:#fff;">Julho 2026</option>
       </select>
     </div>
   </div>
@@ -973,7 +971,7 @@
     <div class="grid-2 even" id="ovTopRow">
       <div class="panel" id="ovEvolucaoPanel">
         <h2>Evolução — Equipe Cauda Longa</h2>
-        <div class="panel-sub">Total de vidas por mês, últimos 18 meses (Jan/25–Jun/26)</div>
+        <div class="panel-sub" id="ovEvolucaoSub">Total de vidas por mês</div>
         <div class="chart-box tall"><canvas id="ovChartEvolucao"></canvas></div>
       </div>
       <div class="panel">
@@ -1114,7 +1112,7 @@
       <div class="f-group">
         <label>Tipo de Período</label>
         <select id="fPeriodType">
-          <option value="all" selected>Todos os 18 meses</option>
+          <option value="all" selected>Todos os meses</option>
           <option value="ano">Ano</option>
           <option value="semestre">Semestre</option>
           <option value="trimestre">Trimestre</option>
@@ -1242,7 +1240,7 @@
         <div class="panel-sub" id="segmentacaoSub">Quem vende agora, quem já vendeu e parou (oportunidade real), e quem nunca vendeu — clique numa fatia para ver as corretoras</div>
         <div class="chart-box" style="position:relative;">
           <canvas id="chartAtividade"></canvas>
-          <div id="segEmptyState" class="chart-empty-state" style="display:none; text-align:center; padding:20px;">Esse gráfico mostra a situação <b>atual</b> da carteira e só faz sentido em "Todos os 18 meses". Troque o período acima pra ver.</div>
+          <div id="segEmptyState" class="chart-empty-state" style="display:none; text-align:center; padding:20px;">Esse gráfico mostra a situação <b>atual</b> da carteira e só faz sentido em "Todos os meses". Troque o período acima pra ver.</div>
         </div>
       </div>
       <div class="panel">
@@ -1250,7 +1248,7 @@
         <div class="panel-sub" id="inatividadeSub">Há quanto tempo cada corretora do filtro parou de vender — clique numa barra para ver as corretoras</div>
         <div class="chart-box" style="position:relative;">
           <canvas id="chartEvolucaoAtiva"></canvas>
-          <div id="inatEmptyState" class="chart-empty-state" style="display:none; text-align:center; padding:20px;">Esse gráfico mostra a situação <b>atual</b> da carteira e só faz sentido em "Todos os 18 meses". Troque o período acima pra ver.</div>
+          <div id="inatEmptyState" class="chart-empty-state" style="display:none; text-align:center; padding:20px;">Esse gráfico mostra a situação <b>atual</b> da carteira e só faz sentido em "Todos os meses". Troque o período acima pra ver.</div>
         </div>
       </div>
     </div>
@@ -1731,7 +1729,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const gap = total.meta - displayInt;
     const pctTotalAdj = total.meta ? displayInt/total.meta : 0;
     const kpis = [
-      {icon:"<i class=ic-target></i>", label: selectedMember ? "Meta do Gestor" : (isAllTeamsAggregate ? "Meta Total — NDI SP" : "Meta Total do Time"), value: fmt0(total.meta) + " vidas", sub: currentMonth === '2026-07' ? "Julho 2026" : "Junho 2026", subClass:""},
+      {icon:"<i class=ic-target></i>", label: selectedMember ? "Meta do Gestor" : (isAllTeamsAggregate ? "Meta Total — NDI SP" : "Meta Total do Time"), value: fmt0(total.meta) + " vidas", sub: monthLabelPt(currentMonth), subClass:""},
       {icon:"<i class=ic-check></i>", label:"Integrado (Realizado)", value: fmt0(displayInt) + " vidas", sub: naoAtribuidoTotal > 0 ? `Inclui ${fmt0(naoAtribuidoTotal)} vidas sem gestor/código não localizado` : (displayInt >= total.meta ? "Meta batida" : "Abaixo da meta"), subClass: displayInt >= total.meta ? "pos" : "warn"},
       {icon:"<i class=ic-chart></i>", label:"% Atingimento", value: pctf(pctTotalAdj), sub: pctTotalAdj >= 1 ? "Acima de 100%" : "Faltam " + pctf(1-pctTotalAdj) + " p/ meta", subClass: pctTotalAdj >= 1 ? "pos" : "neg"},
       {icon:"<i class=ic-warn></i>", label:"Gap p/ Meta", value: (gap>0?fmt0(gap):"0") + " vidas", sub:`Categoria crítica: ${catLabels[critKey]} (${pctf(critPct)})`, subClass:"neg"},
@@ -1846,6 +1844,26 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   });
   document.getElementById('mjBackToOverview').addEventListener('click', () => showView('overview'));
 
+  const MJ_MONTH_LABELS_PT = {'01':'Janeiro','02':'Fevereiro','03':'Março','04':'Abril','05':'Maio','06':'Junho','07':'Julho','08':'Agosto','09':'Setembro','10':'Outubro','11':'Novembro','12':'Dezembro'};
+  function monthLabelPt(yearMonth){
+    const [y, m] = String(yearMonth||'').split('-');
+    return (MJ_MONTH_LABELS_PT[m] || m) + ' ' + y;
+  }
+  // Reconstrói o <select> "Mês de referência" a partir dos meses que o painel realmente
+  // conhece (MJ_TEAMS_BY_MONTH) — antes tinha só Junho/Julho fixos no HTML, então um mês
+  // novo (ex.: Agosto) não aparecia como opção mesmo depois de importado. Agora cresce
+  // sozinho a cada mês novo.
+  function populateMonthSelect(){
+    const sel = document.getElementById('globalMonthSelect');
+    const months = Object.keys(MJ_TEAMS_BY_MONTH).sort();
+    sel.innerHTML = months.map(m => {
+      const [y, mm] = m.split('-');
+      const label = (MJ_MONTH_LABELS_PT[mm] || mm) + ' ' + y;
+      return `<option value="${m}" style="color:#0A1A3A; background:#fff;">${label}</option>`;
+    }).join('');
+    sel.value = currentMonth;
+  }
+  populateMonthSelect();
   renderMetaJunho();
 
   window.getMetaJunhoData = function(month){
@@ -1873,6 +1891,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }
     if (targetMonth === currentMonth) MJ_TEAMS = MJ_TEAMS_BY_MONTH[currentMonth];
     if (!MJ_TEAMS[currentTeam]) currentTeam = Object.keys(MJ_TEAMS)[0];
+    populateMonthSelect();
     renderMetaJunho();
   };
   window.jumpToMetaJunho = function(teamName, gestorNome){
@@ -2043,9 +2062,23 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
    VIEW 2 — ELEGIBILIDADE & REATIVAÇÃO (dados e lógica isolados em IIFE)
    ========================================================= */
 (function(){
-  const MONTH_LABELS = ["Jan/25","Fev/25","Mar/25","Abr/25","Mai/25","Jun/25","Jul/25","Ago/25","Set/25","Out/25","Nov/25","Dez/25","Jan/26","Fev/26","Mar/26","Abr/26","Mai/26","Jun/26","Jul/26"];
+  // "Jan/25", "Fev/25"... gerado a partir de quantos meses os registros de Elegibilidade
+  // realmente têm (sempre começando em Jan/2025) — antes era uma lista fixa de texto que
+  // ficava desatualizada a cada mês novo (a Hapvida acrescenta um mês por atualização).
+  // 19 é só o fallback se, por algum motivo, ainda não houver dado nenhum carregado.
+  const MONTH_ABBR_PT = {'01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'};
+  function buildMonthLabels(count){
+    const labels = []; let y = 2025, m = 1;
+    for (let i = 0; i < count; i++){
+      labels.push(MONTH_ABBR_PT[String(m).padStart(2,'0')] + '/' + String(y).slice(2));
+      m++; if (m > 12){ m = 1; y++; }
+    }
+    return labels;
+  }
+  const eligSampleRow = (window.__DASH_DATA__ && window.__DASH_DATA__.DATA && window.__DASH_DATA__.DATA[0]) || null;
+  const MONTH_LABELS = buildMonthLabels((eligSampleRow && eligSampleRow.m) ? eligSampleRow.m.length : 19);
   window.MONTH_LABELS = MONTH_LABELS;
-  const totalMonths = MONTH_LABELS.length;
+  let totalMonths = MONTH_LABELS.length;
   function buildYearBuckets(){
     const y26months = Array.from({length: totalMonths-12}, (_,i)=>12+i);
     const complete26 = totalMonths >= 24;
@@ -2098,6 +2131,24 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     trimestre: buildTrimestreBuckets(),
     mensal: MONTH_LABELS.map((label,i) => ({label, months:[i]})),
   };
+  // Recalcula MONTH_LABELS/PERIOD_DEFS quando a Elegibilidade é atualizada NA MESMA
+  // sessão (sem recarregar a página) e o arquivo novo já tem mais meses do que o painel
+  // conhecia até então. Sem isso, um mês novo (ex.: Agosto) só apareceria nos filtros de
+  // período depois de recarregar a página inteira — muta os arrays/objeto existentes em
+  // vez de criar novos, pra quem já tinha uma referência a eles (ex.: window.MONTH_LABELS,
+  // usado por outras abas) continuar enxergando os dados atualizados.
+  function refreshMonthDerivedState(){
+    const sampleRow = (typeof DATA !== 'undefined' && DATA && DATA[0]) ? DATA[0] : null;
+    const newCount = (sampleRow && sampleRow.m) ? sampleRow.m.length : MONTH_LABELS.length;
+    if (newCount === MONTH_LABELS.length) return;
+    const newLabels = buildMonthLabels(newCount);
+    MONTH_LABELS.splice(0, MONTH_LABELS.length, ...newLabels);
+    totalMonths = MONTH_LABELS.length;
+    PERIOD_DEFS.ano = buildYearBuckets();
+    PERIOD_DEFS.semestre = buildSemestreBuckets();
+    PERIOD_DEFS.trimestre = buildTrimestreBuckets();
+    PERIOD_DEFS.mensal = MONTH_LABELS.map((label,i) => ({label, months:[i]}));
+  }
   function populatePeriodValue(defaultToLast){
     const typeSel = document.getElementById('fPeriodType');
     const valSel = document.getElementById('fPeriodValue');
@@ -3132,7 +3183,11 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('resultCount').textContent = filtered.length.toLocaleString('pt-BR') + ' corretora(s)';
 
     const totSum = filtered.reduce((s,d)=>s+d.tot,0);
-    const isJulhoMode = (window.getCurrentMonth ? window.getCurrentMonth() : '2026-06') === '2026-07';
+    // "Modo mês vigente": true quando o mês selecionado é o mês mais recente já importado
+    // (não um mês histórico) — nesse caso mostramos o 3TRI26 em andamento (live) em vez do
+    // 2TRI26 já fechado. Antes isso estava fixo em "é julho?", o que travava em julho pra
+    // sempre; agora acompanha qualquer mês novo (agosto, setembro...) automaticamente.
+    const isLatestMonthMode = (window.getCurrentMonth ? window.getCurrentMonth() : null) === (window.getLatestKnownMonth ? window.getLatestKnownMonth() : null);
     const periodMonthsKpi = getPeriodMonths();
     let t2Sum, metaSum, periodLabelKpi;
     if (periodMonthsKpi){
@@ -3143,9 +3198,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       metaSum = filtered.reduce((s,d)=>s+computePeriodElegRank(d, periodMonthsKpi).meta, 0);
       periodLabelKpi = `${periodLabelText} vs Meta`;
     } else {
-      t2Sum = isJulhoMode ? filtered.reduce((s,d)=>s+(d.m[18]||0),0) : filtered.reduce((s,d)=>s+d.t2,0);
-      metaSum = isJulhoMode ? filtered.reduce((s,d)=>s+(d.meta3tri||0),0) : filtered.reduce((s,d)=>s+d.meta,0);
-      periodLabelKpi = isJulhoMode ? '3TRI26 (parcial) vs Meta' : '2TRI26 vs Meta';
+      t2Sum = isLatestMonthMode ? filtered.reduce((s,d)=>s+(d.m[d.m.length-1]||0),0) : filtered.reduce((s,d)=>s+d.t2,0);
+      metaSum = isLatestMonthMode ? filtered.reduce((s,d)=>s+(d.meta3tri||0),0) : filtered.reduce((s,d)=>s+d.meta,0);
+      periodLabelKpi = isLatestMonthMode ? '3TRI26 (parcial) vs Meta' : '2TRI26 vs Meta';
     }
     const eligCount = periodMonthsKpi ? filtered.filter(d=>computePeriodElegRank(d, periodMonthsKpi).el===1).length : filtered.filter(d=>d.el===1).length;
     const eligPct = filtered.length ? (eligCount/filtered.length*100) : 0;
@@ -3162,9 +3217,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }
 
     // ===== Situação de Atividade da Carteira (distinto do flag "Elegível" da campanha) =====
-    const periodMonths = getPeriodMonths(); // null = "Todos os 18 meses"
+    const periodMonths = getPeriodMonths(); // null = "Todos os meses"
     const periodType = document.getElementById('fPeriodType').value;
-    const periodLabel = periodType === 'all' ? 'todos os 18 meses' : (PERIOD_DEFS[periodType][Number(document.getElementById('fPeriodValue').value)] || {}).label || '';
+    const periodLabel = periodType === 'all' ? 'todos os meses' : (PERIOD_DEFS[periodType][Number(document.getElementById('fPeriodValue').value)] || {}).label || '';
     const showAbsoluteCharts = !periodMonths;
     const reactListEffective = showAbsoluteCharts ? reactList : filtered.filter(d => {
       const minMonthPeriod = Math.min.apply(null, periodMonths);
@@ -3449,7 +3504,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (page>totalPages) page = totalPages;
     const pageRows = sorted.slice((page-1)*perPage, page*perPage);
 
-    const isJulhoModeHeader = (window.getCurrentMonth ? window.getCurrentMonth() : '2026-06') === '2026-07';
+    const isLatestMonthModeHeader = (window.getCurrentMonth ? window.getCurrentMonth() : null) === (window.getLatestKnownMonth ? window.getLatestKnownMonth() : null);
+    const curMonthAbbrHeader = (() => { const ym = window.getCurrentMonth ? window.getCurrentMonth() : ''; return MONTH_ABBR_PT[ym.split('-')[1]] || ym; })();
     const periodTypeHeader = document.getElementById('fPeriodType').value;
     const periodMonthsHeader = getPeriodMonths();
     if (periodMonthsHeader){
@@ -3458,8 +3514,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       document.getElementById('thAtual').textContent = periodLabelHeader;
       document.getElementById('thMeta').textContent = 'Meta ' + periodLabelHeader;
     } else {
-      document.getElementById('thAtual').textContent = isJulhoModeHeader ? 'Julho' : '2TRI26 Atual';
-      document.getElementById('thMeta').textContent = isJulhoModeHeader ? 'Meta Julho' : 'Meta 2TRI26';
+      document.getElementById('thAtual').textContent = isLatestMonthModeHeader ? curMonthAbbrHeader : '2TRI26 Atual';
+      document.getElementById('thMeta').textContent = isLatestMonthModeHeader ? ('Meta ' + curMonthAbbrHeader) : 'Meta 2TRI26';
     }
     document.getElementById('elTableBody').innerHTML = pageRows.map(d => {
       const react = isReactivation(d);
@@ -3471,9 +3527,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       const catPme = d.mc ? idxsRow.reduce((s,i)=>s+(d.mc.pme[i]||0),0) : 0;
       const catTotal = catInd + catSs + catPme;
       const periodCalc = periodMonthsRow ? computePeriodElegRank(d, periodMonthsRow) : null;
-      const isJulhoModeRow = (window.getCurrentMonth ? window.getCurrentMonth() : '2026-06') === '2026-07';
-      const atualRow = periodCalc ? periodCalc.periodTotal : (isJulhoModeRow ? (d.m[18]||0) : d.t2);
-      const metaRow = periodCalc ? periodCalc.meta : (isJulhoModeRow ? (d.meta3tri||0) : d.meta);
+      const isLatestMonthModeRow = (window.getCurrentMonth ? window.getCurrentMonth() : null) === (window.getLatestKnownMonth ? window.getLatestKnownMonth() : null);
+      const atualRow = periodCalc ? periodCalc.periodTotal : (isLatestMonthModeRow ? (d.m[d.m.length-1]||0) : d.t2);
+      const metaRow = periodCalc ? periodCalc.meta : (isLatestMonthModeRow ? (d.meta3tri||0) : d.meta);
       const gapRow = atualRow - metaRow;
       const elRow = periodCalc ? periodCalc.el : d.el;
       const rkRow = periodCalc ? periodCalc.rk : d.rk;
@@ -4218,8 +4274,9 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     DATA.forEach(d => {
       const c = allCorretoras[d.c];
       if (c){
-        d.m[18] = c.total;
-        if (d.mc){ d.mc.pf[18] = c.ind; d.mc.ss[18] = c.ss; d.mc.pme[18] = c.pme; }
+        const lastIdx = d.m.length - 1;
+        d.m[lastIdx] = c.total;
+        if (d.mc){ d.mc.pf[lastIdx] = c.ind; d.mc.ss[lastIdx] = c.ss; d.mc.pme[lastIdx] = c.pme; }
         d.tot = d.m.reduce((s,v)=>s+v, 0);
         atualizadas++;
       }
@@ -4262,6 +4319,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   };
   window.updateEligibilidadeData = function(newRecords){
     DATA = newRecords;
+    refreshMonthDerivedState();
     EL_GESTORES.length = 0;
     [...new Set(DATA.map(d=>d.g))].sort().forEach(g=>EL_GESTORES.push(g));
     selGestor.innerHTML = '<option value="">Todos</option>';
@@ -4285,7 +4343,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   const pctf = n => (n*100).toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
   const pctColor = p => p >= 1 ? 'var(--green)' : (p >= 0.7 ? 'var(--amber)' : 'var(--red)');
   const CL_LABEL = "Estevão Cardoso (Cauda Longa)";
-  const MONTH_LABELS = ["Jan/25","Fev/25","Mar/25","Abr/25","Mai/25","Jun/25","Jul/25","Ago/25","Set/25","Out/25","Nov/25","Dez/25","Jan/26","Fev/26","Mar/26","Abr/26","Mai/26","Jun/26"];
+  // Referência direta ao mesmo array que a Elegibilidade já monta (window.MONTH_LABELS,
+  // dinâmico) — antes essa view tinha sua PRÓPRIA cópia fixa de texto (desatualizada,
+  // faltando até Julho/26), o que já causava divergência entre partes desta mesma tela.
+  const MONTH_LABELS = window.MONTH_LABELS;
   const catLabels = {IND:'Individual', SS:'Super Simples', PME:'PME', ADM:'Administradora'};
   const iniciais = nome => nome.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
   let ovCharts = {};
@@ -4395,8 +4456,11 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     document.getElementById('ovEvolucaoPanel').style.display = isCaudaLongaScope ? '' : 'none';
     document.getElementById('ovTopRow').style.gridTemplateColumns = isCaudaLongaScope ? '' : '1fr';
     if (isCaudaLongaScope){
-      const monthly = new Array(18).fill(0);
-      elig.forEach(d => { d.m.forEach((v,i) => monthly[i] += v); });
+      // Tamanho do array precisa acompanhar MONTH_LABELS (dinâmico) — antes era fixo em
+      // 18 posições, então o mês mais recente sempre ficava de fora (virava NaN no gráfico).
+      const monthly = new Array(MONTH_LABELS.length).fill(0);
+      elig.forEach(d => { d.m.forEach((v,i) => { monthly[i] = (monthly[i]||0) + v; }); });
+      document.getElementById('ovEvolucaoSub').textContent = `Total de vidas por mês, últimos ${MONTH_LABELS.length} meses (${MONTH_LABELS[0]}–${MONTH_LABELS[MONTH_LABELS.length-1]})`;
       destroyOv('evolucao');
       ovCharts.evolucao = new Chart(document.getElementById('ovChartEvolucao'), {
         type:'bar',
@@ -5148,7 +5212,12 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const old = window.getMetaJunhoData(newData.detectedMonth);
     let html = '<h3 style="font-size:14px;color:var(--navy);margin-bottom:8px;"><i class=ic-chart></i> Desempenho Comercial — Resumo das mudanças</h3>';
     const latestKnownMonth = window.getLatestKnownMonth ? window.getLatestKnownMonth() : window.getCurrentMonth();
-    if (newData.detectedMonth && latestKnownMonth && newData.detectedMonth !== latestKnownMonth){
+    // "Histórico" é só quando o arquivo é de um mês ANTERIOR ao mais recente já
+    // conhecido — um mês novo (ex.: Agosto chegando depois de Julho) não é "mês
+    // passado", é o próprio mês vigente. Comparar com "!==" tratava qualquer mês novo
+    // como se fosse uma correção histórica, o que pulava a atualização de Elegibilidade
+    // e Ranking mesmo sendo o arquivo do mês atual.
+    if (newData.detectedMonth && latestKnownMonth && newData.detectedMonth < latestKnownMonth){
       html += `<div style="font-size:12.5px; margin-bottom:10px; padding:10px 14px; border-radius:8px; background:#fff7ed; color:#9a3412;"><i class=ic-warn></i> Este arquivo é de <b>${metaMonthLabel(newData.detectedMonth)}</b> — não é o mês mais recente (<b>${metaMonthLabel(latestKnownMonth)}</b>). Vou corrigir só o histórico de ${metaMonthLabel(newData.detectedMonth)} no Desempenho Comercial; Elegibilidade e Ranking do mês atual não serão alterados.</div>`;
     }
     html += '<table style="width:100%;font-size:12.5px;margin-bottom:10px;border-collapse:collapse;"><thead><tr style="border-bottom:1px solid var(--line);"><th style="text-align:left;padding:4px;">Time</th><th style="text-align:right;padding:4px;">Meta (atual→novo)</th><th style="text-align:right;padding:4px;">Integrado (atual→novo)</th></tr></thead><tbody>';
@@ -5605,7 +5674,9 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   function detectWorkbookKind(wb){
     const has = prefix => wb.SheetNames.some(n => n.toUpperCase().indexOf(prefix.toUpperCase()) === 0);
     const hasExact = name => wb.SheetNames.some(n => n.toUpperCase().trim() === name.toUpperCase());
-    if (has('NDI SP - META')) return 'meta';
+    // Mesmos dois formatos de aba de Meta que parseMetaJunhoWorkbook aceita — a Hapvida
+    // já trocou o nome uma vez (de "NDI SP - META <MÊS>" pra "NDI SP - <MÊS>").
+    if (META_SHEET_PREFIXES.some(p => has(p))) return 'meta';
     if (has('ELEGIBILIDADE') || hasExact('ELEGIBILIDADE')) return 'elig';
     if (has('BASE') && !has('ELEGIBILIDADE')) return 'corretoras';
     return 'unknown';
@@ -5693,7 +5764,11 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         // mês — as bridges de Ranking/Elegibilidade abaixo assumem "mês corrente" (sempre
         // mexem no último índice de dados), então só rodam se for o mês mais recente.
         const latestKnownMonth = window.getLatestKnownMonth ? window.getLatestKnownMonth() : window.getCurrentMonth();
-        const isLiveMonthUpload = !pendingMeta.detectedMonth || pendingMeta.detectedMonth === latestKnownMonth;
+        // ">=" (não "===") — um mês NOVO (ex.: Agosto chegando depois de Julho) também
+        // deve rodar as bridges normalmente, só um mês ANTERIOR ao mais recente é que é
+        // "histórico" e deve pular. Com "===" um mês novo era tratado como histórico e a
+        // Elegibilidade/Ranking do mês atual não eram atualizados.
+        const isLiveMonthUpload = !pendingMeta.detectedMonth || pendingMeta.detectedMonth >= latestKnownMonth;
         if (isLiveMonthUpload){
           // O mesmo arquivo alimenta o Ranking de Vendas (mês atual) — mesma fonte, sem divergência
           try {
