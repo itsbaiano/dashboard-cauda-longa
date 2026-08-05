@@ -4923,14 +4923,27 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     'JANEIRO':'01','FEVEREIRO':'02','MARÇO':'03','MARCO':'03','ABRIL':'04','MAIO':'05','JUNHO':'06',
     'JULHO':'07','AGOSTO':'08','SETEMBRO':'09','OUTUBRO':'10','NOVEMBRO':'11','DEZEMBRO':'12',
   };
-  // Detecta o mês real da planilha pelo nome da aba ("NDI SP - META JUNHO" -> "2026-06"),
-  // em vez de assumir que todo arquivo enviado é sempre do mês corrente. O ano usa como
-  // referência o mês mais recente já conhecido (fallbackYearMonth) — simplificação
-  // razoável, já que corretoras não corrigem meses de anos diferentes na prática.
+  // A aba de Meta já teve dois nomes diferentes vindos da Hapvida: "NDI SP - META <MÊS>"
+  // (formato antigo) e "NDI SP - <MÊS>" (formato usado a partir de ago/26, sem "META").
+  // Tenta os dois prefixos, do mais específico pro mais genérico, e devolve também qual
+  // prefixo bateu — precisamos disso pra extrair o nome do mês corretamente logo depois.
+  const META_SHEET_PREFIXES = ['NDI SP - META', 'NDI SP - '];
+  function findMetaSheetInfo(workbook){
+    for (const prefix of META_SHEET_PREFIXES){
+      const name = workbook.SheetNames.find(n => n.toUpperCase().indexOf(prefix.toUpperCase()) === 0);
+      if (name) return { name, prefix, sheet: workbook.Sheets[name] };
+    }
+    return null;
+  }
+  // Detecta o mês real da planilha pelo nome da aba ("NDI SP - META JUNHO" ou
+  // "NDI SP - AGOSTO" -> "2026-06"/"2026-08"), em vez de assumir que todo arquivo
+  // enviado é sempre do mês corrente. O ano usa como referência o mês mais recente já
+  // conhecido (fallbackYearMonth) — simplificação razoável, já que corretoras não
+  // corrigem meses de anos diferentes na prática.
   function detectMetaMonth(workbook, fallbackYearMonth){
-    const name = workbook.SheetNames.find(n => n.toUpperCase().indexOf('NDI SP - META') === 0);
-    if (!name || !fallbackYearMonth) return fallbackYearMonth;
-    const monthWord = name.toUpperCase().replace('NDI SP - META', '').trim();
+    const info = findMetaSheetInfo(workbook);
+    if (!info || !fallbackYearMonth) return fallbackYearMonth;
+    const monthWord = info.name.toUpperCase().replace(info.prefix.toUpperCase(), '').trim();
     const monthNum = META_MONTH_NAME_TO_NUM[monthWord];
     if (!monthNum) return fallbackYearMonth;
     const year = fallbackYearMonth.split('-')[0];
@@ -4938,8 +4951,9 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   }
 
   function parseMetaJunhoWorkbook(workbook){
-    const metaSheet = findSheet(workbook, 'NDI SP - META');
-    if (!metaSheet) throw new Error('Não encontrei a aba "NDI SP - META..." no arquivo.');
+    const metaInfo = findMetaSheetInfo(workbook);
+    if (!metaInfo) throw new Error('Não encontrei a aba "NDI SP - META..." nem "NDI SP - <mês>..." no arquivo.');
+    const metaSheet = metaInfo.sheet;
     const detectedMonth = detectMetaMonth(workbook, (window.getLatestKnownMonth ? window.getLatestKnownMonth() : null) || (window.getCurrentMonth ? window.getCurrentMonth() : null));
 
     const metaRows = sheetRows(metaSheet);
@@ -5020,8 +5034,39 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const baseSheet = findSheet(workbook, 'BASE DE DADOS');
     if (!eligSheet) throw new Error('Não encontrei a aba "ELEGIBILIDADE" neste arquivo. Se este é o "Corretoras", ele já atualiza a Elegibilidade sozinho — suba-o só no campo "Desempenho Comercial" (com a Carteira), e deixe este campo vazio.');
 
-    const monthCols = [8,12,16,20,24,28,32,36,40,44,48,52,84,88,92,97,101,105,110];
     const rows = sheetRows(eligSheet);
+    // Colunas de mês (ex.: "JANEIRO 25", "AGOSTO 26"...) e as de resumo (trimestre
+    // anterior/vigente, total 17 meses, elegibilidade e ranking oficiais) são achadas
+    // pelo texto do cabeçalho, não por posição fixa — a Hapvida acrescenta uma coluna
+    // de mês nova a cada atualização (empurrando tudo que vem depois pra direita), o
+    // que já quebrou essa planilha mais de uma vez com índices fixos. Assim, cresce
+    // sozinho a cada mês, sem precisar mexer no código de novo.
+    const eligHeader1 = (rows[0]||[]).map(h => h==null ? '' : h);
+    const eligHeader2 = (rows[1]||[]).map(h => h==null ? '' : h);
+    const normHdr = s => String(s||'').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const findEligHeaderCol = (...texts) => {
+      const wanted = texts.map(normHdr);
+      for (let i = 0; i < eligHeader1.length; i++){ if (wanted.indexOf(normHdr(eligHeader1[i])) >= 0) return i; }
+      return -1;
+    };
+    const MONTH_HEADER_RE = /^(JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO) ?\d{2}$/;
+    const monthCols = [];
+    for (let i = 0; i < eligHeader1.length; i++){
+      if (MONTH_HEADER_RE.test(normHdr(eligHeader1[i])) && normHdr(eligHeader2[i+3]) === 'TOTAL') monthCols.push(i+3);
+    }
+    if (!monthCols.length) throw new Error('Não consegui identificar as colunas de meses na aba ELEGIBILIDADE — o layout da planilha pode ter mudado.');
+    // 1TRI26/2TRI26 são os trimestres usados pela régua vigente (3TRI/26) pra calcular
+    // meta/gap — quando o 3TRI/26 fechar e o próximo trimestre começar, esses dois nomes
+    // vão precisar ser atualizados aqui (fora de escopo por enquanto, é um problema de
+    // outubro/26 em diante).
+    const idxT1 = findEligHeaderCol('1TRI26 TOTAL');
+    const idxT2 = findEligHeaderCol('2TRI26 TOTAL');
+    const idxTot17 = findEligHeaderCol('17 MESES TOTAIS');
+    const idxEleg = findEligHeaderCol('ELEGIBILIDADE');
+    const idxRank = findEligHeaderCol('RANKING');
+    if (idxT1 < 0 || idxT2 < 0 || idxTot17 < 0 || idxEleg < 0 || idxRank < 0){
+      throw new Error('Não consegui identificar as colunas de resumo (1TRI26/2TRI26/17 meses/Elegibilidade/Ranking) na aba ELEGIBILIDADE — o layout da planilha pode ter mudado.');
+    }
 
     const enrich = {};
     if (baseSheet){
@@ -5068,14 +5113,16 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         ss: monthCols.map(c => num(row[c-2])),
         pme: monthCols.map(c => num(row[c-1])),
       };
-      const t1 = num(row[93]), t2 = num(row[106]);
+      const t1 = num(row[idxT1]), t2 = num(row[idxT2]);
       const meta = t1 * 1.10;              // meta do 2TRI26 — régua da época (×1,10)
       const gap = t2 - meta;
       const meta3tri = t2 * 0.80;          // meta do 3TRI26 — régua vigente (×0,80: não cair >20% vs 2TRI26)
-      const tot = num(row[114]);
-      const elegText = row[115];
-      const rk = row[116];
-      const u3 = monthly[15] + monthly[16] + monthly[17];
+      const tot = num(row[idxTot17]);
+      const elegText = row[idxEleg];
+      const rk = row[idxRank];
+      // Últimos 3 meses conhecidos — sempre os 3 últimos elementos de "monthly" (que já
+      // cresce sozinho a cada mês novo), nunca posições fixas.
+      const u3 = (monthly[monthly.length-1]||0) + (monthly[monthly.length-2]||0) + (monthly[monthly.length-3]||0);
       const pico = monthly.length ? Math.max.apply(null, monthly) : 0;
       records.push({
         c: String(codigo), n: nome, g: gestorLabel, gr: grade, ass: assessoriaRaw, acod: codAssMap[String(codigo)] || '', m: monthly, mc,
