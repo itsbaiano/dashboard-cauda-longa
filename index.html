@@ -883,6 +883,10 @@
           <label>Filtrar por Corretora</label>
           <select id="pendCorretoraFilter"><option value="">Todas</option></select>
         </div>
+        <div class="f-group" style="max-width:260px;">
+          <label id="pendPropostaLabel">Buscar por Nº da Proposta</label>
+          <input type="text" id="pendPropostaSearch" placeholder="Ex.: 12345">
+        </div>
       </div>
       <div class="f-group" style="margin-top:12px;">
         <label>Filtrar por Status <span id="pendStatusClear" style="font-weight:400; color:var(--blue); cursor:pointer; display:none; margin-left:6px;">(limpar)</span></label>
@@ -1977,6 +1981,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const pme = PENDENCIAS_PME[gestorNome] || [];
     const pf = PENDENCIAS_PF[gestorNome] || [];
     document.getElementById('pendFilterLabel').textContent = pendActiveTab === 'pme' ? 'Filtrar por Data Vigência' : 'Filtrar por Data Status';
+    document.getElementById('pendPropostaLabel').textContent = pendActiveTab === 'pme' ? 'Buscar por Nº da Proposta' : 'Buscar por Nº do Orçamento';
+    document.getElementById('pendPropostaSearch').placeholder = pendActiveTab === 'pme' ? 'Ex.: 12345' : 'Ex.: 67890';
 
     const list = pendActiveTab === 'pme' ? pme : pf;
     const dateField = pendActiveTab === 'pme' ? 'dataVigencia' : 'dataStatus';
@@ -2012,8 +2018,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     });
     document.getElementById('pendStatusClear').style.display = pendSelectedStatuses.size ? '' : 'none';
 
-    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
-    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))));
+    // Busca por número — texto livre, casa parcialmente (contém), ignora espaços nas pontas.
+    // Proposta (PME) e Orçamento (PF) são campos diferentes, mas o mesmo campo de busca serve
+    // pros dois: cada aba já sabe qual número procurar (dataVigencia/dataStatus segue o mesmo padrão).
+    const searchRaw = document.getElementById('pendPropostaSearch').value.trim().toLowerCase();
+
+    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.proposta||'').toLowerCase().indexOf(searchRaw) >= 0));
+    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.orcamento||'').toLowerCase().indexOf(searchRaw) >= 0));
 
     document.getElementById('pendCountPme').textContent = pmeFiltered.reduce((s,p)=>s+(p.beneficiarios||0),0);
     document.getElementById('pendCountPf').textContent = pfFiltered.reduce((s,p)=>s+(p.vidas||0),0);
@@ -2042,6 +2053,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('pendPfSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
     document.getElementById('pendCorretoraFilter').value = '';
+    document.getElementById('pendPropostaSearch').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
     document.getElementById('pendModalOverlay').style.display = 'flex';
@@ -2051,12 +2063,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('pendStatusClear').addEventListener('click', () => { pendSelectedStatuses.clear(); renderPendencias(); });
   document.getElementById('pendMonthFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendCorretoraFilter').addEventListener('change', renderPendencias);
+  document.getElementById('pendPropostaSearch').addEventListener('input', renderPendencias);
   document.getElementById('pendTabPme').addEventListener('click', () => {
     pendActiveTab = 'pme';
     document.getElementById('pendTabPme').classList.add('active'); document.getElementById('pendTabPf').classList.remove('active');
     document.getElementById('pendPmeSection').style.display = ''; document.getElementById('pendPfSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
     document.getElementById('pendCorretoraFilter').value = '';
+    document.getElementById('pendPropostaSearch').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
   });
@@ -2066,6 +2080,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('pendPfSection').style.display = ''; document.getElementById('pendPmeSection').style.display = 'none';
     document.getElementById('pendMonthFilter').value = '';
     document.getElementById('pendCorretoraFilter').value = '';
+    document.getElementById('pendPropostaSearch').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
   });
