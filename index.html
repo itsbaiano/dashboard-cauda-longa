@@ -1855,7 +1855,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   // sozinho a cada mês novo.
   function populateMonthSelect(){
     const sel = document.getElementById('globalMonthSelect');
-    const months = Object.keys(MJ_TEAMS_BY_MONTH).sort();
+    // Só mês atual + anterior aparecem na lista — o histórico mais antigo continua
+    // guardado nos dados (MJ_TEAMS_BY_MONTH), só não polui esse seletor.
+    const months = Object.keys(MJ_TEAMS_BY_MONTH).sort().slice(-2);
     sel.innerHTML = months.map(m => {
       const [y, mm] = m.split('-');
       const label = (MJ_MONTH_LABELS_PT[mm] || mm) + ' ' + y;
