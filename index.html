@@ -606,7 +606,7 @@
    dali, no lugar de literais embutidos no HTML.
    ========================================================= */
 (function(){
-  var EMPTY = {MJ_TEAMS_BY_MONTH:{}, currentMonth:"", PENDENCIAS_PME:{}, PENDENCIAS_PF:{}, MJ_CORRETORAS:{}, MJ_NAO_ATRIBUIDO:{}, MJ_BENCHMARK:[], DATA:[], RANKDATA:[], PROPOSTAS:[], RANK_CUR_LABEL:"", RANK_PREV_LABEL:""};
+  var EMPTY = {MJ_TEAMS_BY_MONTH:{}, currentMonth:"", PENDENCIAS_PME:{}, PENDENCIAS_PF:{}, MJ_CORRETORAS:{}, MJ_NAO_ATRIBUIDO_BY_MONTH:{}, MJ_BENCHMARK:[], DATA:[], RANKDATA:[], PROPOSTAS:[], RANK_CUR_LABEL:"", RANK_PREV_LABEL:""};
   function showFatalError(msg){
     document.addEventListener('DOMContentLoaded', function(){
       var b = document.createElement('div');
@@ -1658,7 +1658,18 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let PENDENCIAS_PME = window.__DASH_DATA__.PENDENCIAS_PME;
   let PENDENCIAS_PF = window.__DASH_DATA__.PENDENCIAS_PF;
   let MJ_CORRETORAS = window.__DASH_DATA__.MJ_CORRETORAS;
-  let MJ_NAO_ATRIBUIDO = window.__DASH_DATA__.MJ_NAO_ATRIBUIDO;
+  // Corretoras "sem gestor atribuído" / "código não localizado no database" (linhas de
+  // rodapé da planilha Meta) — guardado por mês, igual MJ_TEAMS_BY_MONTH. Antes era um valor
+  // único e "atual": ao corrigir um mês passado (ex.: reimportar Julho estando em Agosto), o
+  // "% Todos os Times" daquele mês somava o não-atribuído ERRADO (o de Agosto, não o de
+  // Julho), fazendo o agregado de todos os times não bater. Migração: se o data.json ainda
+  // for do formato antigo (campo achatado), usa ele como valor do mês atual.
+  let MJ_NAO_ATRIBUIDO_BY_MONTH = window.__DASH_DATA__.MJ_NAO_ATRIBUIDO_BY_MONTH ||
+    (window.__DASH_DATA__.MJ_NAO_ATRIBUIDO ? {[currentMonth]: window.__DASH_DATA__.MJ_NAO_ATRIBUIDO} : {});
+  function getNaoAtribuido(month){
+    if (month && MJ_NAO_ATRIBUIDO_BY_MONTH[month]) return MJ_NAO_ATRIBUIDO_BY_MONTH[month];
+    return MJ_NAO_ATRIBUIDO_BY_MONTH[currentMonth] || {ind:0, ss:0, pme:0, adm:0};
+  }
   let MJ_BENCHMARK = window.__DASH_DATA__.MJ_BENCHMARK;
   let currentTeam = "Estevão Cardoso (Cauda Longa)";
 
@@ -1719,7 +1730,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     else { resetBtn.style.display = 'none'; }
 
     const isAllTeamsAggregate = currentTeam === 'ALL_TEAMS' && !selectedMember;
-    const naoAtribuidoTotal = isAllTeamsAggregate ? (MJ_NAO_ATRIBUIDO.ind + MJ_NAO_ATRIBUIDO.ss + MJ_NAO_ATRIBUIDO.pme) : 0;
+    const naoAtr = getNaoAtribuido(currentMonth);
+    const naoAtribuidoTotal = isAllTeamsAggregate ? (naoAtr.ind + naoAtr.ss + naoAtr.pme) : 0;
     const displayInt = total.int + naoAtribuidoTotal;
 
     // categoria crítica (menor % dentro do escopo selecionado — time ou gestor)
@@ -1871,25 +1883,26 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   window.getMetaJunhoData = function(month){
     // Com "month" informado e diferente do mês ao vivo, devolve os times já gravados
     // pra aquele mês específico (pra comparação correta ao corrigir um mês passado).
-    // benchmark/corretoras/não-atribuído não são guardados por mês, então continuam
-    // sendo sempre os "atuais" (limitação conhecida).
+    // benchmark/corretoras continuam sendo sempre os "atuais" (limitação conhecida);
+    // não-atribuído já é por mês (ver getNaoAtribuido).
     const teams = (month && MJ_TEAMS_BY_MONTH[month]) ? MJ_TEAMS_BY_MONTH[month] : MJ_TEAMS;
-    return { teams, benchmark: MJ_BENCHMARK, corretoras: MJ_CORRETORAS, naoAtribuido: MJ_NAO_ATRIBUIDO };
+    return { teams, benchmark: MJ_BENCHMARK, corretoras: MJ_CORRETORAS, naoAtribuido: getNaoAtribuido(month) };
   };
   window.updateMetaJunhoData = function(newData){
     // Grava sempre no mês que a planilha realmente representa (detectedMonth),
     // não sempre em "currentMonth" — senão um arquivo de mês passado sobrescreveria
     // silenciosamente o mês atual. Só vira o "estado ao vivo" (currentMonth, benchmark,
-    // corretoras, não-atribuído) se for o mês mais recente já conhecido.
+    // corretoras) se for o mês mais recente já conhecido — mas o não-atribuído é gravado
+    // por mês sempre, igual MJ_TEAMS_BY_MONTH, pra não vazar o valor de um mês pro outro.
     const targetMonth = newData.detectedMonth || currentMonth;
     const latest = Object.keys(MJ_TEAMS_BY_MONTH).sort().pop();
     const isLive = !latest || targetMonth >= latest;
     MJ_TEAMS_BY_MONTH[targetMonth] = newData.teams;
+    if (newData.naoAtribuido) MJ_NAO_ATRIBUIDO_BY_MONTH[targetMonth] = newData.naoAtribuido;
     if (isLive){
       currentMonth = targetMonth;
       MJ_BENCHMARK = newData.benchmark;
       if (newData.corretoras) MJ_CORRETORAS = newData.corretoras;
-      if (newData.naoAtribuido) MJ_NAO_ATRIBUIDO = newData.naoAtribuido;
     }
     if (targetMonth === currentMonth) MJ_TEAMS = MJ_TEAMS_BY_MONTH[currentMonth];
     if (!MJ_TEAMS[currentTeam]) currentTeam = Object.keys(MJ_TEAMS)[0];
@@ -1924,7 +1937,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       PENDENCIAS_PME: PENDENCIAS_PME,
       PENDENCIAS_PF: PENDENCIAS_PF,
       MJ_CORRETORAS: MJ_CORRETORAS,
-      MJ_NAO_ATRIBUIDO: MJ_NAO_ATRIBUIDO,
+      MJ_NAO_ATRIBUIDO_BY_MONTH: MJ_NAO_ATRIBUIDO_BY_MONTH,
       MJ_BENCHMARK: MJ_BENCHMARK,
     };
   };
@@ -5897,7 +5910,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       PENDENCIAS_PME: st.PENDENCIAS_PME,
       PENDENCIAS_PF: st.PENDENCIAS_PF,
       MJ_CORRETORAS: st.MJ_CORRETORAS,
-      MJ_NAO_ATRIBUIDO: st.MJ_NAO_ATRIBUIDO,
+      MJ_NAO_ATRIBUIDO_BY_MONTH: st.MJ_NAO_ATRIBUIDO_BY_MONTH,
       MJ_BENCHMARK: st.MJ_BENCHMARK,
       DATA: window.getEligibilidadeData ? window.getEligibilidadeData() : [],
       RANKDATA: window.getRankData ? window.getRankData() : [],
