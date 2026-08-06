@@ -325,6 +325,18 @@
     .grid-2{grid-template-columns:1fr;}
     .view-nav{flex-direction:column;}
   }
+  /* Celular pequeno (iPhone SE e afins, ~375px) — 2 colunas nesses cards vira ~160px de
+     largura, estreito demais pros rótulos/números, causando texto quebrando em várias
+     linhas e cards com alturas desiguais ("deformados"). Aqui vira 1 coluna só: cada card
+     usa a largura quase inteira da tela e o texto para de quebrar tanto. */
+  @media (max-width:520px){
+    .kpi-row{grid-template-columns:1fr !important;}
+    .gestor-grid{grid-template-columns:1fr;}
+    .exec-grid{grid-template-columns:1fr;}
+    .ass-kpis{grid-template-columns:1fr;}
+    .ass-overview{grid-template-columns:1fr;}
+    #cmpCardsGrid{grid-template-columns:1fr !important;}
+  }
 
   /* ===== v8: ÍCONES SVG (mask + currentColor) ===== */
   i[class^=ic-]{display:inline-block; width:1em; height:1em; vertical-align:-0.135em; background:currentColor; -webkit-mask:var(--i) center/contain no-repeat; mask:var(--i) center/contain no-repeat;}
