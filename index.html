@@ -190,6 +190,26 @@
   .gestor-card .opp-chip{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; white-space:nowrap;}
   .gestor-card .cat-mini{font-size:10.5px; color:var(--muted); border-top:1px solid var(--line); padding-top:9px;}
 
+  /* Times/gestores expansíveis — visão "Todos os Times" do Desempenho Comercial */
+  .mj-team-expand{background:var(--card); border-radius:12px; margin-top:8px; overflow:hidden; border:1px solid var(--line);}
+  .mj-team-expand-head{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 16px; cursor:pointer; border-left:3px solid transparent; background:#f8fafc; transition:background .15s ease;}
+  .mj-team-expand-head:hover{background:#eef1f8;}
+  .mj-team-expand.open .mj-team-expand-head{border-bottom:1px solid var(--line);}
+  .mj-team-expand-title{font-size:12.5px; font-weight:700;}
+  .mj-team-expand-title .chev{display:inline-block; width:14px; font-weight:400; opacity:.7;}
+  .mj-team-expand-sub{font-size:11px; color:var(--muted); white-space:nowrap;}
+  .mj-team-expand-body{padding:2px 16px 6px;}
+  .mj-team-row{display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line); cursor:pointer; transition:opacity .15s ease;}
+  .mj-team-row:first-child{border-top:none;}
+  .mj-team-row:hover{opacity:.75;}
+  .mj-tr-avatar{width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:10px; flex-shrink:0;}
+  .mj-tr-name{width:150px; font-size:12px; font-weight:600; color:var(--navy); flex-shrink:0;}
+  .mj-tr-bar{flex:1; height:6px; background:#eef1f6; border-radius:3px; overflow:hidden;}
+  .mj-tr-bar-fill{height:100%; border-radius:3px; transition:width .5s ease;}
+  .mj-tr-pct{width:48px; text-align:right; font-size:12px; font-weight:700;}
+  .mj-tr-vidas{width:84px; text-align:right; font-size:10.5px; color:var(--muted);}
+  @media (max-width:640px){ .mj-tr-name{width:96px;} .mj-tr-vidas{display:none;} }
+
   /* SUB-TABS */
   .subtabs{display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;}
   .subtab-btn{padding:7px 15px; border-radius:20px; border:1px solid var(--line); background:#f8fafc; font-size:12px; font-weight:600; color:var(--muted); cursor:pointer; transition:.15s;}
@@ -1083,9 +1103,15 @@
     </div>
 
     <div class="panel">
-      <h2 id="mjGestorGridTitle">Performance Individual por Gestor</h2>
-      <div class="panel-sub" id="mjGestorGridSub">Quebra por categoria: Individual (IND) · Super Simples (SS) · PME · Administradora (ADM)</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h2 id="mjGestorGridTitle">Performance Individual por Gestor</h2>
+          <div class="panel-sub" id="mjGestorGridSub">Quebra por categoria: Individual (IND) · Super Simples (SS) · PME · Administradora (ADM)</div>
+        </div>
+        <button id="mjExpandAllBtn" class="btn-reset" style="display:none; background:var(--navy); color:#fff; border-color:var(--navy); white-space:nowrap;"><i class=ic-users></i> Ver todos os gestores</button>
+      </div>
       <div class="gestor-grid" id="mjGestorGrid"></div>
+      <div id="mjTeamsExpand"></div>
     </div>
 
     <div class="panel" id="mjCorretorasPanel">
@@ -1688,6 +1714,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let mjCharts = {};
   let mjCorretorasGestor = null;
   let mjSelectedGestor = null;
+  let mjExpandedTeams = new Set(); // times abertos (mostrando gestores) na visão "Todos os Times"
   function destroyMJChart(key){ if(mjCharts[key]){ mjCharts[key].destroy(); delete mjCharts[key]; } }
 
   function renderCorretoras(gestorNome){
@@ -1786,7 +1813,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       });
 
       document.getElementById('mjGestorGridTitle').textContent = 'Desempenho por Time';
-      document.getElementById('mjGestorGridSub').textContent = 'Clique num time para ver os gestores dele';
+      document.getElementById('mjGestorGridSub').textContent = 'Clique num card pra abrir o detalhe completo do time — ou use o botão pra ver todos os gestores aqui mesmo';
       document.getElementById('mjGestorGrid').innerHTML = teamRows.map((r,i) => {
         const p = r.meta ? r.int/r.meta : 0;
         const cor = ['#2E52D4','#F26B21','#101E63','#16B87A','#FFB81C'][i % 5];
@@ -1795,8 +1822,50 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
           <div class="total-pct" style="color:${pctColor(p)}">${pctf(p)}</div>
           <div class="total-label">${fmt0(r.int)} / ${fmt0(r.meta)} vidas (meta total)</div></div>`;
       }).join('');
+
+      // Botão "Ver todos os gestores" — expande/recolhe as listas por time abaixo dos cards,
+      // sem sair da visão "Todos os Times" (pedido explícito: ver todo mundo, mas organizado).
+      const totalGestores = teamRows.reduce((s,r)=>s+MJ_TEAMS[r.name].members.length, 0);
+      const allOpen = teamRows.length > 0 && teamRows.every(r => mjExpandedTeams.has(r.name));
+      const expandBtn = document.getElementById('mjExpandAllBtn');
+      expandBtn.style.display = 'inline-flex';
+      expandBtn.innerHTML = allOpen ? '<i class=ic-users></i> Fechar gestores' : `<i class=ic-users></i> Ver todos os ${totalGestores} gestores`;
+      expandBtn.onclick = () => {
+        if (allOpen) mjExpandedTeams.clear(); else teamRows.forEach(r => mjExpandedTeams.add(r.name));
+        renderMetaJunho();
+      };
+
+      document.getElementById('mjTeamsExpand').innerHTML = teamRows.map((r,i) => {
+        const cor = ['#2E52D4','#F26B21','#101E63','#16B87A','#FFB81C'][i % 5];
+        const p = r.meta ? r.int/r.meta : 0;
+        const isOpen = mjExpandedTeams.has(r.name);
+        // Menor % primeiro dentro do time — quem precisa de atenção aparece no topo da lista.
+        const members = [...MJ_TEAMS[r.name].members].sort((a,b) => {
+          const pa = a.total.meta ? a.total.int/a.total.meta : 0, pb = b.total.meta ? b.total.int/b.total.meta : 0;
+          return pa - pb;
+        });
+        const rowsHtml = members.map(m => {
+          const pm = m.total.meta ? m.total.int/m.total.meta : 0;
+          return `<div class="mj-team-row" onclick="window.jumpToMetaJunho('${r.name.replace(/'/g,"\\'")}', '${m.nome.replace(/'/g,"\\'")}')" title="Ver detalhe deste gestor">
+            <div class="mj-tr-avatar" style="background:${m.cor}">${iniciais(m.nome)}</div>
+            <div class="mj-tr-name">${m.nome}</div>
+            <div class="mj-tr-bar"><div class="mj-tr-bar-fill" style="width:${Math.min(pm*100,100)}%; background:${pctColor(pm)}"></div></div>
+            <div class="mj-tr-pct" style="color:${pctColor(pm)}">${pctf(pm)}</div>
+            <div class="mj-tr-vidas">${fmt0(m.total.int)} vidas</div>
+          </div>`;
+        }).join('');
+        return `<div class="mj-team-expand ${isOpen?'open':''}">
+          <div class="mj-team-expand-head" style="border-left-color:${cor}" onclick="window.__mjToggleTeamExpand('${r.name.replace(/'/g,"\\'")}')">
+            <div class="mj-team-expand-title" style="color:${cor}"><span class="chev">${isOpen?'▾':'▸'}</span>${r.name} — ${pctf(p)}</div>
+            <div class="mj-team-expand-sub">${fmt0(r.int)} / ${fmt0(r.meta)} vidas</div>
+          </div>
+          ${isOpen ? `<div class="mj-team-expand-body">${rowsHtml}</div>` : ''}
+        </div>`;
+      }).join('');
       return;
     }
+    document.getElementById('mjExpandAllBtn').style.display = 'none';
+    document.getElementById('mjTeamsExpand').innerHTML = '';
 
     document.getElementById('mjMetaGestorTitle').textContent = `Meta vs. Integrado por Gestor — ${teamLabel}`;
     document.getElementById('mjMetaGestorSub').textContent = 'Clique numa barra para ver o detalhe daquele gestor';
@@ -1920,6 +1989,11 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     showView('mj');
     renderMetaJunho();
     setTimeout(()=>{ document.getElementById('mjKpiRow').scrollIntoView({behavior:'smooth', block:'start'}); }, 30);
+  };
+
+  window.__mjToggleTeamExpand = function(teamName){
+    if (mjExpandedTeams.has(teamName)) mjExpandedTeams.delete(teamName); else mjExpandedTeams.add(teamName);
+    renderMetaJunho();
   };
 
   window.setGlobalMonth = function(month){
