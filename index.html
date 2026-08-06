@@ -1414,6 +1414,7 @@
       <div class="view-switch" id="cmpModeSwitch">
         <button class="vs-btn active" data-mode="equipe">Times / Gestores</button>
         <button class="vs-btn" data-mode="corretora">Corretoras</button>
+        <button class="vs-btn" data-mode="assessoria">Assessorias</button>
       </div>
       <div class="f-group">
         <label id="cmpLabelA">Entidade A</label>
@@ -1928,6 +1929,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     mjSelectedGestor = null;
     if (!MJ_TEAMS[currentTeam]) currentTeam = Object.keys(MJ_TEAMS)[0];
     renderMetaJunho();
+    // Comparativo → Assessorias também lê o mês de referência (via getCurrentMonth), então
+    // precisa re-renderizar quando o usuário troca o mês no dropdown, senão fica mostrando
+    // o mês antigo até o usuário mexer em outra coisa na tela.
+    if (window.renderCompare) window.renderCompare();
   };
   window.getCurrentMonth = function(){ return currentMonth; };
   // Mês cronologicamente mais recente já importado — independente de qual mês
@@ -4648,18 +4653,79 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   const catLabels = {IND:'Individual', SS:'Super Simples', PME:'PME', ADM:'Administradora'};
   let cmpChart = null;
 
-  let cmpMode = 'equipe';   // 'equipe' | 'corretora'
+  let cmpMode = 'equipe';   // 'equipe' | 'corretora' | 'assessoria'
   const cmpLabels = () => (window.getRankLabels ? window.getRankLabels() : {cur:'Mês atual', prev:'Mês anterior'});
   const cmpCorrLabel = r => `${r.c} — ${r.n}`;
   function cmpPopulateDatalists(){
     return (window.getRankData ? window.getRankData() : []).filter(r=>r.cur>0||r.prev>0).sort((a,b)=>b.cur-a.cur);
   }
+  // Resolve qual posição de d.m/d.mc corresponde ao mês selecionado no dropdown "Mês de
+  // Referência" (window.getCurrentMonth()) — MONTH_LABELS sempre começa em Jan/2025 (índice 0),
+  // então dá pra calcular a posição direto do "YYYY-MM" sem precisar de outra lista.
+  function cmpMonthIndex(){
+    const iso = window.getCurrentMonth ? window.getCurrentMonth() : null;
+    if (!iso) return -1;
+    const parts = iso.split('-');
+    const y = Number(parts[0]), m = Number(parts[1]);
+    if (!y || !m) return -1;
+    return (y - 2025) * 12 + (m - 1);
+  }
+  // Valor do mês selecionado num array mensal (d.m ou d.mc.pf/ss/pme) — cai pro último mês
+  // conhecido se o mês de referência estiver fora do que esse array cobre (não deveria
+  // acontecer em uso normal, é só uma rede de segurança).
+  function cmpValueAtCurMonth(arr){
+    if (!arr || !arr.length) return 0;
+    const idx = cmpMonthIndex();
+    if (idx >= 0 && idx < arr.length) return arr[idx] || 0;
+    return arr[arr.length-1] || 0;
+  }
+  // Rótulo do mês selecionado (ex.: "Ago/26") — acompanha o dropdown "Mês de Referência";
+  // cai pro mês mais recente conhecido se por algum motivo não achar o índice certo.
+  const cmpCurMonthLabel = () => {
+    const labels = window.MONTH_LABELS;
+    if (!labels || !labels.length) return 'mês atual';
+    const idx = cmpMonthIndex();
+    return (idx >= 0 && idx < labels.length) ? labels[idx] : labels[labels.length-1];
+  };
+  // Agrupa as corretoras da carteira Cauda Longa (aba Elegibilidade) por assessoria — mesma
+  // lógica de agrupamento já usada em Elegibilidade → "Assessorias" (agrupa por d.ass, mostra
+  // o código mais comum encontrado no grupo). Só cobre o universo Cauda Longa: a base de
+  // Ranking (todas as corretoras de SP) não tem informação de assessoria.
+  // Vidas = só o mês selecionado no "Mês de Referência" (index calculado por cmpMonthIndex),
+  // não o acumulado de 17 meses — pedido explícito do usuário, e acompanha o dropdown que já
+  // existe em Desempenho Comercial.
+  function cmpAggregateAssessorias(){
+    const data = window.getEligibilidadeData ? window.getEligibilidadeData() : [];
+    const groups = {};
+    data.forEach(d => {
+      if (!d.ass) return; // "sem assessoria vinculada" não faz sentido como entidade pra comparar
+      (groups[d.ass] = groups[d.ass] || []).push(d);
+    });
+    return Object.entries(groups).map(([name, rows]) => {
+      const acod = rows.map(r=>r.acod).find(x=>x && String(x).trim()!=='0') || '';
+      const n = rows.length;
+      const eleg = rows.filter(r=>r.el===1).length;
+      const cat = {
+        IND: {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.pf) : 0), 0)},
+        SS:  {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.ss) : 0), 0)},
+        PME: {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.pme) : 0), 0)},
+        ADM: {meta:0, int: 0}, // Elegibilidade não rastreia Administradora (só Desempenho Comercial)
+      };
+      const vidas = rows.reduce((s,r)=>s + cmpValueAtCurMonth(r.m), 0);
+      return { name, acod, n, eleg, elegPct: n ? eleg/n*100 : 0, vidas, cat };
+    });
+  }
   // Renderiza a lista rolável de um combobox, filtrada pelo texto digitado
-  // Monta a lista de itens conforme o modo atual (corretoras OU times/gestores)
+  // Monta a lista de itens conforme o modo atual (corretoras, assessorias OU times/gestores)
   function cmpItens(){
     if (cmpMode === 'corretora'){
       return cmpPopulateDatalists().map(r => ({
         value: 'corr:'+r.c, cod: r.c, nome: r.n, extra: fmt0(r.cur), grupo: r.e==='—'?'Sem equipe':r.e
+      }));
+    }
+    if (cmpMode === 'assessoria'){
+      return cmpAggregateAssessorias().sort((a,b)=>b.vidas-a.vidas).map(a => ({
+        value: 'ass:'+a.name, cod: a.acod, nome: a.name, extra: a.n+' corretoras', grupo: 'Assessorias — carteira Cauda Longa'
       }));
     }
     const mjData = window.getMetaJunhoData ? window.getMetaJunhoData() : null;
@@ -4777,6 +4843,20 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
         isCorretora: true,
       };
     }
+    if (type === 'ass'){
+      const a = cmpAggregateAssessorias().find(x => x.name === name);
+      if (!a) return {label:'—', role:'Assessoria', cor:'#94a3b8', total:{meta:0,int:0}, cat:{IND:{meta:0,int:0},SS:{meta:0,int:0},PME:{meta:0,int:0},ADM:{meta:0,int:0}}, isAssessoria:true, corretorasCount:0, elegPct:0};
+      return {
+        label: a.name + (a.acod ? ` (${a.acod})` : ''),
+        role: `Assessoria — ${a.n} corretora${a.n===1?'':'s'} na carteira Cauda Longa`,
+        cor: '#16B87A',
+        total: {meta: 0, int: a.vidas},
+        cat: a.cat,
+        isAssessoria: true,
+        corretorasCount: a.n,
+        elegPct: a.elegPct,
+      };
+    }
     if (type === 'team'){
       const td = mjData.teams[name];
       const teamIdx = Object.keys(mjData.teams).indexOf(name);
@@ -4816,7 +4896,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     if (document.activeElement !== inA){ inA.value = cmpItemLabel(itA); document.getElementById('cmpComboA').classList.add('has-value'); }
     if (document.activeElement !== inB){ inB.value = cmpItemLabel(itB); document.getElementById('cmpComboB').classList.add('has-value'); }
     const hint = document.getElementById('cmpHint');
-    hint.style.display = ''; hint.textContent = itens.length + (cmpMode==='corretora' ? ' corretoras disponíveis' : ' times e gestores');
+    hint.style.display = ''; hint.textContent = itens.length + (cmpMode==='corretora' ? ' corretoras disponíveis' : (cmpMode==='assessoria' ? ' assessorias (carteira Cauda Longa)' : ' times e gestores'));
     const selA = {value: itA.value}, selB = {value: itB.value};
 
     const A = getEntityData(mjData, selA.value);
@@ -4826,19 +4906,28 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
     document.getElementById('cmpHeadB').textContent = B.label;
 
     const pctColor = p => p >= 1 ? 'var(--green)' : (p >= 0.7 ? 'var(--amber)' : 'var(--red)');
+    // isRaw: modo "valor absoluto" (sem % de meta) — cobre tanto Corretora (mês atual vs
+    // anterior) quanto Assessoria (total do mês atual); isCorrReal/isAss distinguem o texto
+    // específico de cada um (a Assessoria não tem "mês anterior" pra comparar).
+    const isCorrReal = !!(A.isCorretora || B.isCorretora);
+    const isAss = !!(A.isAssessoria || B.isAssessoria);
+    const isRaw = isCorrReal || isAss;
     function entityCard(E){
-      const corr = !!E.isCorretora;
+      const raw = !!(E.isCorretora || E.isAssessoria);
       const p = E.total.meta ? E.total.int/E.total.meta : 0;
-      const maxCat = corr ? Math.max.apply(null, Object.keys(catLabels).map(k=>E.cat[k].int).concat([1])) : 0;
+      const maxCat = raw ? Math.max.apply(null, Object.keys(catLabels).map(k=>E.cat[k].int).concat([1])) : 0;
       const catsHtml = Object.keys(catLabels).map(k => {
         const c = E.cat[k];
-        const cp = corr ? (maxCat ? c.int/maxCat : 0) : (c.meta ? c.int/c.meta : 0);
+        const cp = raw ? (maxCat ? c.int/maxCat : 0) : (c.meta ? c.int/c.meta : 0);
         const pct = Math.min(cp*100, 100);
-return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${corr ? E.cor : pctColor(cp)}"></div></div><div class="cat-pct">${corr ? fmt0(c.int) : pctf(cp)}</div></div>`;
+return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${raw ? E.cor : pctColor(cp)}"></div></div><div class="cat-pct">${raw ? fmt0(c.int) : pctf(cp)}</div></div>`;
       }).join('');
+      const totalLabel = E.isAssessoria
+        ? `${cmpCurMonthLabel()} · ${E.corretorasCount||0} corretora${(E.corretorasCount||0)===1?'':'s'} · ${Math.round(E.elegPct||0)}% elegíveis`
+        : (E.isCorretora ? (cmpLabels().cur + ' · ' + fmt0(E.total.meta) + ' em ' + cmpLabels().prev) : (fmt0(E.total.int) + ' / ' + fmt0(E.total.meta) + ' vidas (meta total)'));
       return `<div class="gestor-card"><div class="avatar" style="background:${E.cor}">${iniciais(E.label)}</div><div class="name">${E.label}</div><div class="role">${E.role}</div>
-        <div class="total-pct" style="color:${corr ? E.cor : pctColor(p)}">${corr ? fmt0(E.total.int) : pctf(p)}</div>
-        <div class="total-label">${corr ? (cmpLabels().cur + ' · ' + fmt0(E.total.meta) + ' em ' + cmpLabels().prev) : (fmt0(E.total.int) + ' / ' + fmt0(E.total.meta) + ' vidas (meta total)')}</div>${catsHtml}</div>`;
+        <div class="total-pct" style="color:${raw ? E.cor : pctColor(p)}">${raw ? fmt0(E.total.int) : pctf(p)}</div>
+        <div class="total-label">${totalLabel}</div>${catsHtml}</div>`;
     }
     document.getElementById('cmpCardsGrid').innerHTML = entityCard(A) + entityCard(B);
 
@@ -4852,21 +4941,26 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       : (gapVsA>0 ? `<span class="vs-tag neutral">faltam ${fmt0(gapVsA)} vidas</span>` : '<span class="vs-tag">meta batida</span>');
     let tagB = geralWinner==='B' ? '<span class="vs-tag">melhor % atingimento</span>'
       : (gapVsB>0 ? `<span class="vs-tag neutral">faltam ${fmt0(gapVsB)} vidas</span>` : '<span class="vs-tag">meta batida</span>');
-    const isCorr = !!(A.isCorretora || B.isCorretora);
-    if (isCorr){
+    if (isCorrReal){
       const dA = A.total.int - A.total.meta, dB = B.total.int - B.total.meta;
       const mk = d => d===0 ? '<span class="vs-tag neutral">estável vs mês anterior</span>'
         : (d>0 ? `<span class="vs-tag">▲ +${fmt0(d)} vs ${cmpLabels().prev.split('/')[0]}</span>`
                : `<span class="vs-tag neutral">▼ ${fmt0(Math.abs(d))} vs ${cmpLabels().prev.split('/')[0]}</span>`);
       tagA = mk(dA); tagB = mk(dB);
+    } else if (isAss){
+      tagA = `<span class="vs-tag neutral">${A.corretorasCount||0} corretoras · ${Math.round(A.elegPct||0)}% elegíveis</span>`;
+      tagB = `<span class="vs-tag neutral">${B.corretorasCount||0} corretoras · ${Math.round(B.elegPct||0)}% elegíveis</span>`;
     }
+    const vsSubtitle = E => E.isAssessoria
+      ? (fmt0(E.total.int) + ' vidas · ' + cmpCurMonthLabel())
+      : (E.isCorretora ? (cmpLabels().cur+' · '+fmt0(E.total.meta)+' em '+cmpLabels().prev) : (fmt0(E.total.int)+' / '+fmt0(E.total.meta)+' vidas'));
     document.getElementById('cmpVsHero').innerHTML = `
       <div class="vs-side left">
         <div class="vs-avatar" style="background:${A.cor}">${iniciais(A.label)}</div>
         <div class="vs-name">${A.label}</div>
         <div class="vs-role">${A.role}</div>
-        <div class="vs-bigpct" style="color:${A.cor}">${isCorr ? fmt0(A.total.int) : pctf(pA)}</div>
-        <div class="vs-vidas">${isCorr ? (cmpLabels().cur+' · '+fmt0(A.total.meta)+' em '+cmpLabels().prev) : (fmt0(A.total.int)+' / '+fmt0(A.total.meta)+' vidas')}</div>
+        <div class="vs-bigpct" style="color:${A.cor}">${isRaw ? fmt0(A.total.int) : pctf(pA)}</div>
+        <div class="vs-vidas">${vsSubtitle(A)}</div>
         ${tagA}
       </div>
       <div class="vs-center">VS</div>
@@ -4874,8 +4968,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         <div class="vs-avatar" style="background:${B.cor}">${iniciais(B.label)}</div>
         <div class="vs-name">${B.label}</div>
         <div class="vs-role">${B.role}</div>
-        <div class="vs-bigpct" style="color:${B.cor}">${isCorr ? fmt0(B.total.int) : pctf(pB)}</div>
-        <div class="vs-vidas">${isCorr ? (cmpLabels().cur+' · '+fmt0(B.total.meta)+' em '+cmpLabels().prev) : (fmt0(B.total.int)+' / '+fmt0(B.total.meta)+' vidas')}</div>
+        <div class="vs-bigpct" style="color:${B.cor}">${isRaw ? fmt0(B.total.int) : pctf(pB)}</div>
+        <div class="vs-vidas">${vsSubtitle(B)}</div>
         ${tagB}
       </div>`;
 
@@ -4884,23 +4978,23 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const battleHtml = Object.keys(catLabels).map(k => {
       const cA = A.cat[k], cB = B.cat[k];
       const maxK = Math.max(cA.int, cB.int, 1);
-      const paK = isCorr ? (cA.int/maxK) : (cA.meta ? cA.int/cA.meta : 0);
-      const pbK = isCorr ? (cB.int/maxK) : (cB.meta ? cB.int/cB.meta : 0);
+      const paK = isRaw ? (cA.int/maxK) : (cA.meta ? cA.int/cA.meta : 0);
+      const pbK = isRaw ? (cB.int/maxK) : (cB.meta ? cB.int/cB.meta : 0);
       const winner = Math.abs(paK-pbK) < 0.001 ? null : (paK > pbK ? 'A' : 'B');
       const barPct = p => Math.min(p*100, 100).toFixed(1);
-      const badge = p => (!isCorr && p > 1) ? `<span class="cb-badge">+${Math.round((p-1)*100)}%</span>` : '';
+      const badge = p => (!isRaw && p > 1) ? `<span class="cb-badge">+${Math.round((p-1)*100)}%</span>` : '';
       const winLabel = winner==='A' ? `<span class="cb-win" style="color:${A.cor}">◀ ${shortName(A.label)}</span>`
         : winner==='B' ? `<span class="cb-win" style="color:${B.cor}">${shortName(B.label)} ▶</span>`
         : `<span class="cb-win" style="color:var(--muted)">empate</span>`;
       return `<div class="cat-battle-row">
         <div class="cb-side l">
-          ${badge(paK)}<span class="cb-pct">${isCorr ? fmt0(cA.int) : pctf(paK)}</span>
+          ${badge(paK)}<span class="cb-pct">${isRaw ? fmt0(cA.int) : pctf(paK)}</span>
           <div class="cb-track-wrap"><div class="cb-fill" style="width:${barPct(paK)}%; background:${A.cor}"></div></div>
         </div>
         <div class="cb-label"><span class="cb-cat">${catLabels[k]}</span>${winLabel}</div>
         <div class="cb-side r">
           <div class="cb-track-wrap"><div class="cb-fill" style="width:${barPct(pbK)}%; background:${B.cor}"></div></div>
-          <span class="cb-pct">${isCorr ? fmt0(cB.int) : pctf(pbK)}</span>${badge(pbK)}
+          <span class="cb-pct">${isRaw ? fmt0(cB.int) : pctf(pbK)}</span>${badge(pbK)}
         </div>
       </div>`;
     }).join('');
@@ -4911,21 +5005,26 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const gapA = Math.max(0, A.total.meta - A.total.int);
     const gapB = Math.max(0, B.total.meta - B.total.int);
 
-    let rows = isCorr ? '' : row('Meta', A.total.meta, B.total.meta, v=>fmt0(v)+' vidas', 'neutral');
+    let rows = isRaw ? '' : row('Meta', A.total.meta, B.total.meta, v=>fmt0(v)+' vidas', 'neutral');
     const tSub = document.getElementById('cmpTableSub');
-    if (tSub) tSub.textContent = isCorr
-      ? `Volume de vidas lado a lado — ${cmpLabels().cur} vs ${cmpLabels().prev}. O melhor valor de cada linha aparece em destaque.`
-      : 'Time inteiro ou gestor individual, lado a lado. O melhor valor de cada linha aparece em destaque.';
-    if (isCorr){
+    if (tSub) tSub.textContent = isAss
+      ? `Assessorias da carteira Cauda Longa, lado a lado — total de vidas em ${cmpCurMonthLabel()} (mês atual). O melhor valor de cada linha aparece em destaque.`
+      : (isCorrReal
+        ? `Volume de vidas lado a lado — ${cmpLabels().cur} vs ${cmpLabels().prev}. O melhor valor de cada linha aparece em destaque.`
+        : 'Time inteiro ou gestor individual, lado a lado. O melhor valor de cada linha aparece em destaque.');
+    if (isCorrReal){
       rows += row(cmpLabels().prev + ' (mês anterior)', A.total.meta, B.total.meta, v=>fmt0(v)+' vidas', 'higher');
       rows += row('Variação vs mês anterior', A.total.int-A.total.meta, B.total.int-B.total.meta, v=>(v>=0?'+':'')+fmt0(v)+' vidas', 'higher');
+    } else if (isAss){
+      rows += row('Nº de Corretoras', A.corretorasCount||0, B.corretorasCount||0, v=>fmt0(v), 'higher');
+      rows += row('% Elegíveis', A.elegPct||0, B.elegPct||0, v=>v.toFixed(1)+'%', 'higher');
     } else {
       rows += row('Integrado (Realizado)', A.total.int, B.total.int, v=>fmt0(v)+' vidas', 'higher');
       rows += row('% Atingimento', pctA, pctB, pctf, 'higher');
       rows += row('Gap p/ Meta', gapA, gapB, v=>fmt0(v)+' vidas', 'lower');
     }
     Object.keys(catLabels).forEach(k => {
-      if (isCorr){
+      if (isRaw){
         rows += row(catLabels[k], A.cat[k].int, B.cat[k].int, v=>fmt0(v)+' vidas', 'higher');
       } else {
         const pA = A.cat[k].meta ? A.cat[k].int/A.cat[k].meta : 0;
@@ -4937,14 +5036,16 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
 
     if (cmpChart) { cmpChart.destroy(); cmpChart = null; }
     const catKeys = Object.keys(catLabels);
-    const valA = catKeys.map(k => isCorr ? A.cat[k].int : (A.cat[k].meta ? A.cat[k].int/A.cat[k].meta*100 : 0));
-    const valB = catKeys.map(k => isCorr ? B.cat[k].int : (B.cat[k].meta ? B.cat[k].int/B.cat[k].meta*100 : 0));
+    const valA = catKeys.map(k => isRaw ? A.cat[k].int : (A.cat[k].meta ? A.cat[k].int/A.cat[k].meta*100 : 0));
+    const valB = catKeys.map(k => isRaw ? B.cat[k].int : (B.cat[k].meta ? B.cat[k].int/B.cat[k].meta*100 : 0));
     const hCat = document.getElementById('cmpChartCategoria').closest('.panel').querySelector('h2');
     const sCat = document.getElementById('cmpChartCategoria').closest('.panel').querySelector('.panel-sub');
-    if (hCat) hCat.textContent = isCorr ? 'Vidas por Categoria — A vs. B' : '% Atingimento por Categoria — A vs. B';
-    if (sCat) sCat.textContent = isCorr
-      ? `Volume de vidas em ${cmpLabels().cur} por segmento`
-      : 'Individual, Super Simples, PME e Administradora lado a lado';
+    if (hCat) hCat.textContent = isRaw ? 'Vidas por Categoria — A vs. B' : '% Atingimento por Categoria — A vs. B';
+    if (sCat) sCat.textContent = isAss
+      ? `Individual, Super Simples e PME — total de vidas em ${cmpCurMonthLabel()} (mês atual)`
+      : (isCorrReal
+        ? `Volume de vidas em ${cmpLabels().cur} por segmento`
+        : 'Individual, Super Simples, PME e Administradora lado a lado');
     cmpChart = new Chart(document.getElementById('cmpChartCategoria'), {
       type:'bar',
       data:{ labels: catKeys.map(k=>catLabels[k]), datasets:[
@@ -4953,8 +5054,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       ]},
       options:{ responsive:true, maintainAspectRatio:false,
         plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}},
-          tooltip:{callbacks:{label:c=> c.dataset.label + ': ' + (isCorr ? fmt0(c.parsed.y)+' vidas' : c.parsed.y.toFixed(1)+'%')}}},
-        scales:{ y:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{callback:v=> isCorr ? fmt0(v) : v+'%'}}, x:{grid:{display:false}} } }
+          tooltip:{callbacks:{label:c=> c.dataset.label + ': ' + (isRaw ? fmt0(c.parsed.y)+' vidas' : c.parsed.y.toFixed(1)+'%')}}},
+        scales:{ y:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{callback:v=> isRaw ? fmt0(v) : v+'%'}}, x:{grid:{display:false}} } }
     });
   }
 
@@ -4962,9 +5063,10 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     cmpMode = b.dataset.mode;
     document.querySelectorAll('#cmpModeSwitch .vs-btn').forEach(x=>x.classList.toggle('active', x===b));
     const corr = cmpMode === 'corretora';
-    document.getElementById('cmpLabelA').textContent = corr ? 'Corretora A' : 'Entidade A';
-    document.getElementById('cmpLabelB').textContent = corr ? 'Corretora B' : 'Entidade B';
-    const ph = corr ? 'Digite o código ou nome da corretora...' : 'Digite o nome do time ou gestor...';
+    const ass = cmpMode === 'assessoria';
+    document.getElementById('cmpLabelA').textContent = corr ? 'Corretora A' : (ass ? 'Assessoria A' : 'Entidade A');
+    document.getElementById('cmpLabelB').textContent = corr ? 'Corretora B' : (ass ? 'Assessoria B' : 'Entidade B');
+    const ph = corr ? 'Digite o código ou nome da corretora...' : (ass ? 'Digite o nome ou código da assessoria...' : 'Digite o nome do time ou gestor...');
     ['A','B'].forEach(w => {
       document.getElementById('cmpInput'+w).placeholder = ph;
       document.getElementById('cmpInput'+w).value = '';
