@@ -658,7 +658,7 @@
    dali, no lugar de literais embutidos no HTML.
    ========================================================= */
 (function(){
-  var EMPTY = {MJ_TEAMS_BY_MONTH:{}, currentMonth:"", PENDENCIAS_PME:{}, PENDENCIAS_PF:{}, MJ_CORRETORAS:{}, MJ_NAO_ATRIBUIDO_BY_MONTH:{}, MJ_BENCHMARK:[], DATA:[], RANKDATA:[], PROPOSTAS:[], RANK_CUR_LABEL:"", RANK_PREV_LABEL:""};
+  var EMPTY = {MJ_TEAMS_BY_MONTH:{}, currentMonth:"", PENDENCIAS_PME:{}, PENDENCIAS_PF:{}, MJ_CORRETORAS:{}, MJ_NAO_ATRIBUIDO_BY_MONTH:{}, MJ_BENCHMARK:[], DATA:[], RANKDATA:[], PROPOSTAS:[], RANK_CUR_LABEL:"", RANK_PREV_LABEL:"", publishedAt:""};
   function showFatalError(msg){
     document.addEventListener('DOMContentLoaded', function(){
       var b = document.createElement('div');
@@ -1700,7 +1700,7 @@ document.getElementById('navBtnCompare').addEventListener('click', ()=>showView(
 document.getElementById('navBtnRank').addEventListener('click', ()=>showView('rank'));
 window.rankInitialized = false;
 document.getElementById('mainHeader').style.display = 'none';
-let PUBLISHED_AT = "29/07/2026, 11:47";
+let PUBLISHED_AT = window.__DASH_DATA__.publishedAt || "";
 document.getElementById('sidebarUpdatedAt').textContent = PUBLISHED_AT || new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
 document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   if (window.setGlobalMonth) window.setGlobalMonth(e.target.value);
@@ -6140,6 +6140,10 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       PROPOSTAS: window.getPropostasData ? window.getPropostasData() : [],
       RANK_CUR_LABEL: window.getRankLabels ? window.getRankLabels().cur : 'Mês atual',
       RANK_PREV_LABEL: window.getRankLabels ? window.getRankLabels().prev : 'Mês anterior',
+      // Grava o momento da publicação DENTRO do data.json — antes esse "Última atualização"
+      // vinha de um texto fixo no index.html (PUBLISHED_AT), que só mudava quando alguém
+      // editava o código; agora acompanha de verdade cada publicação de dados.
+      publishedAt: new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'}),
     };
     return JSON.stringify(payload);
   }
