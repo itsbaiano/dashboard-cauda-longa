@@ -36,7 +36,10 @@
   }
   h1,h2,h3{letter-spacing:-.02em;}
 
-  /* Scrollbar personalizada (site-wide) */
+  /* Scrollbar personalizada (site-wide) — versão -webkit- cobre Chrome/Safari/Edge/Android;
+     scrollbar-width/scrollbar-color é o equivalente padrão que o Firefox usa (ele ignora as
+     regras -webkit-, então sem isso a rolagem ficava com a aparência padrão só nele). */
+  *{scrollbar-width:thin; scrollbar-color:#c7d0dc transparent;}
   ::-webkit-scrollbar{width:9px; height:9px;}
   ::-webkit-scrollbar-track{background:transparent;}
   ::-webkit-scrollbar-thumb{background:#c7d0dc; border-radius:8px;}
@@ -112,6 +115,12 @@
     .sidebar-month-wrap{margin-top:0 !important; padding:0; flex:1; min-width:130px;}
     .sidebar-month-label{display:none;}
     .sidebar-bottom{gap:8px;}
+    /* O botão "Atualizar Dados" flutua fixo no canto inferior direito — numa tela larga
+       sobra espaço em branco ao lado do último gráfico, mas no celular ele acaba tampando
+       texto/valores. Aqui fica um pouco menor e a página ganha uma reserva de espaço embaixo
+       pra sempre ter uma área livre onde o botão pode "pousar" sem cobrir conteúdo. */
+    #btnOpenImport{padding:11px 16px; font-size:12px; bottom:14px; right:14px;}
+    .main-area{padding-bottom:76px;}
   }
 
   /* ===== HEADER (hero) ===== */
