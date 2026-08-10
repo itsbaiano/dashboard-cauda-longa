@@ -4158,6 +4158,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let rkmCurrent = null;
   const MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const mesLabel = ym => { const [y,m] = ym.split('-'); return `${MES_NOMES[parseInt(m,10)-1]}/${y.slice(2)}`; };
+  // "YYYY-MM" um mês antes/depois — usado pra deduzir o rótulo do "mês anterior" do Ranking
+  // quando só o mês atual é detectado (ex.: detectou Agosto, mês anterior é Julho).
+  const shiftMonth = (ym, delta) => {
+    const [y, m] = ym.split('-').map(Number);
+    const total = y * 12 + (m - 1) + delta;
+    return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+  };
 
   function propostasDaCorretora(nomeCorretora){
     if (typeof PROPOSTAS === 'undefined' || !PROPOSTAS.length) return [];
@@ -4376,7 +4383,16 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   window.getRankData = () => RANKDATA;
   window.getPropostasData = () => PROPOSTAS;
   window.getRankLabels = () => ({cur: RANK_CUR_LABEL, prev: RANK_PREV_LABEL});
-  window.updateRankingData = function(curList, prevList){
+  window.updateRankingData = function(curList, prevList, detectedMonth){
+    // Antes RANK_CUR_LABEL/RANK_PREV_LABEL ("Julho/26" etc.) nunca mudavam depois da carga
+    // inicial — a aba Ranking sempre mostrava os mesmos dois meses no cabeçalho, não importa
+    // quantas vezes um mês novo fosse importado. Agora, quando dá pra saber de qual mês o
+    // arquivo é (detectedMonth, vindo do mesmo arquivo "NDI SP - Por Gestor"), os rótulos
+    // acompanham: mês atual = detectedMonth, mês anterior = o mês imediatamente antes dele.
+    if (detectedMonth){
+      RANK_CUR_LABEL = mesLabel(detectedMonth);
+      RANK_PREV_LABEL = mesLabel(shiftMonth(detectedMonth, -1));
+    }
     // Mantém o que já existe se um dos lados não vier
     const curMap = {}, prevMap = {};
     if (curList) curList.forEach(r => curMap[r.c] = r);
@@ -6098,7 +6114,10 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     }
     if (pendingElig) window.updateEligibilidadeData(pendingElig);
     if (pendingCarteira) applyCarteira(pendingCarteira);
-    if (pendingRankCur || pendingRankPrev) window.updateRankingData(pendingRankCur, pendingRankPrev);
+    // Só passa o mês detectado quando pendingRankCur realmente veio de uma importação "ao
+    // vivo" desta rodada (não de uma correção de mês passado) — mantém "Julho/26 vs Junho/26"
+    // etc. sempre igual ao mês do arquivo mais recente, em vez de travado no valor inicial.
+    if (pendingRankCur || pendingRankPrev) window.updateRankingData(pendingRankCur, pendingRankPrev, (pendingRankCur && pendingMeta) ? pendingMeta.detectedMonth : null);
     if (pendingPendPme || pendingPendPf) {
       window.updatePendenciasData({
         pme: pendingPendPme ? pendingPendPme.data : undefined,
