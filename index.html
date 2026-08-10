@@ -1004,6 +1004,42 @@
     </div>
   </div>
 
+  <div id="mjCatModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
+    <div id="mjCatModal" style="background:#fff; border-radius:16px; max-width:840px; width:100%; max-height:85vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(16,30,99,.25);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px; padding:22px 26px; background:linear-gradient(120deg, #f8faff 0%, #eef2fb 100%); border-bottom:1px solid var(--line);">
+        <div style="display:flex; gap:14px; align-items:flex-start;">
+          <div id="mjCatModalIcon" style="width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:linear-gradient(135deg, var(--primary-dark), var(--primary-light)); box-shadow:0 4px 10px rgba(16,30,99,.25);"><i class="ic-user" style="font-size:20px; color:#fff;"></i></div>
+          <div>
+            <div style="font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-weight:700;">Atingimento por Categoria — Corretoras</div>
+            <h2 style="font-size:18px; color:var(--navy); margin:2px 0 9px; font-weight:800;"><span id="mjCatModalTitle">—</span></h2>
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">
+              <span id="mjCatChipPct" class="gestor-tag">—</span>
+              <span id="mjCatChipCount" class="tag" style="background:#eef2fb; color:var(--navy);">—</span>
+              <span id="mjCatChipVidas" class="tag" style="background:#eef2fb; color:var(--navy);">—</span>
+            </div>
+          </div>
+        </div>
+        <button id="btnCloseMjCat" class="btn-reset" style="flex-shrink:0;">Fechar ✕</button>
+      </div>
+      <div style="padding:18px 26px 4px; display:flex; gap:12px; flex-wrap:wrap;">
+        <div class="f-group" style="flex:1; min-width:220px;">
+          <label>Buscar por nome ou código</label>
+          <input type="text" id="mjCatSearch" placeholder="Ex.: Corretora ABC ou 12345">
+        </div>
+        <div class="f-group" id="mjCatGestorFilterWrap" style="min-width:210px;">
+          <label>Filtrar por Gestor</label>
+          <select id="mjCatGestorFilter" class="ic-left ic-user"><option value="">Todos os gestores</option></select>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin:14px 26px 26px; overflow-y:auto; flex:1; min-height:0;">
+        <table>
+          <thead><tr><th>Corretora</th><th>Código</th><th id="mjCatGestorTh">Gestor</th><th>Filial</th><th class="num">Vidas</th></tr></thead>
+          <tbody id="mjCatBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <style>
     .cqg-kpi, .cqg-card{ transition:transform .18s ease, box-shadow .18s ease; }
     .cqg-kpi:hover, .cqg-card:hover{ transform:translateY(-3px); box-shadow:0 10px 24px rgba(16,30,99,.12); }
@@ -1169,7 +1205,7 @@
       </div>
       <div class="panel">
         <h2>% Atingimento por Categoria — Time</h2>
-        <div class="panel-sub">Onde o time está performando acima ou abaixo da meta</div>
+        <div class="panel-sub">Onde o time está performando acima ou abaixo da meta · clique numa barra pra ver as corretoras</div>
         <div class="chart-box"><canvas id="mjChartCategoria"></canvas></div>
       </div>
     </div>
@@ -1803,6 +1839,73 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   }
   document.getElementById('mjCorretorasSearch').addEventListener('input', window.debounce(() => { if (mjCorretorasGestor) renderCorretoras(mjCorretorasGestor); }, 200));
 
+  // Interatividade do gráfico "% Atingimento por Categoria — Time": clique numa barra (IND/SS/PME)
+  // abre modal com as corretoras que venderam naquela categoria, no escopo atual (time/gestor selecionado).
+  // ADM fica de fora: a base não tem detalhamento por corretora pra essa categoria, só por gestor.
+  const mjCatFieldByKey = {IND:'ind', SS:'ss', PME:'pme'};
+  const mjCatIconByKey = {IND:'ic-user', SS:'ic-users', PME:'ic-building'};
+  let mjCatAllRows = [], mjCatShowGestor = false, mjCatGestorFilterVal = '';
+
+  function getMjCatRows(key){
+    const field = mjCatFieldByKey[key];
+    if (!field) return {rows:[], showGestor:false};
+    const td = getTeamRenderData(currentTeam);
+    const selectedMember = mjSelectedGestor ? td.members.find(m=>m.nome===mjSelectedGestor) : null;
+    const gestorNames = selectedMember ? [selectedMember.nome] : td.members.map(m=>m.nome);
+    const rows = [];
+    gestorNames.forEach(g => {
+      (MJ_CORRETORAS[g] || []).forEach(c => {
+        const v = c[field] || 0;
+        if (v > 0) rows.push({n:c.n, codigo:c.c||'', gestor:g, filial:c.filial, vidas:v});
+      });
+    });
+    rows.sort((a,b) => b.vidas - a.vidas);
+    return {rows, showGestor: gestorNames.length > 1};
+  }
+
+  function renderMjCatModal(){
+    const q = (document.getElementById('mjCatSearch').value||'').trim().toLowerCase();
+    let filtered = mjCatAllRows;
+    if (mjCatGestorFilterVal) filtered = filtered.filter(r => r.gestor === mjCatGestorFilterVal);
+    if (q) filtered = filtered.filter(r => r.n.toLowerCase().indexOf(q) >= 0 || String(r.codigo).toLowerCase().indexOf(q) >= 0);
+    const shown = filtered.slice(0, 30);
+    document.getElementById('mjCatGestorTh').style.display = mjCatShowGestor ? '' : 'none';
+    const body = document.getElementById('mjCatBody');
+    body.innerHTML = shown.length ? shown.map(r => `<tr><td class="name">${r.n}</td><td>${r.codigo}</td><td style="${mjCatShowGestor?'':'display:none;'}">${r.gestor}</td><td>${r.filial}</td><td class="num"><b>${fmt0(r.vidas)}</b></td></tr>`).join('')
+      : `<tr><td colspan="5" style="text-align:center; color:var(--muted); padding:20px;">${q || mjCatGestorFilterVal ? 'Nenhuma corretora encontrada.' : 'Sem vendas nesta categoria para o escopo atual.'}</td></tr>`;
+    if (filtered.length > 30) body.innerHTML += `<tr><td colspan="5" style="text-align:center; color:var(--muted); font-size:11px; padding:8px;">Mostrando 30 de ${filtered.length} — refine a busca para ver outras.</td></tr>`;
+  }
+
+  function openMjCatModal(key, pct){
+    const {rows, showGestor} = getMjCatRows(key);
+    mjCatAllRows = rows; mjCatShowGestor = showGestor; mjCatGestorFilterVal = '';
+    document.getElementById('mjCatModalTitle').textContent = catLabels[key];
+    const totalVidas = rows.reduce((s,r)=>s+r.vidas,0);
+    const pctColorHex = pct>=1?'#16B87A':(pct>=0.7?'#FFB81C':'#F5364A');
+    const chipPct = document.getElementById('mjCatChipPct');
+    chipPct.textContent = pctf(pct) + ' de atingimento';
+    chipPct.style.background = pctColorHex;
+    document.getElementById('mjCatChipCount').textContent = `${rows.length} corretora${rows.length===1?'':'s'}`;
+    document.getElementById('mjCatChipVidas').textContent = `${fmt0(totalVidas)} vidas`;
+    document.getElementById('mjCatModalIcon').innerHTML = `<i class="${mjCatIconByKey[key]}" style="font-size:20px; color:#fff;"></i>`;
+
+    const gestorFilterWrap = document.getElementById('mjCatGestorFilterWrap');
+    const gestorFilterSel = document.getElementById('mjCatGestorFilter');
+    gestorFilterWrap.style.display = showGestor ? '' : 'none';
+    if (showGestor){
+      const uniqueGestores = [...new Set(rows.map(r=>r.gestor))].sort();
+      gestorFilterSel.innerHTML = '<option value="">Todos os gestores</option>' + uniqueGestores.map(g=>`<option value="${g}">${g}</option>`).join('');
+    }
+
+    document.getElementById('mjCatSearch').value = '';
+    renderMjCatModal();
+    document.getElementById('mjCatModalOverlay').style.display = 'flex';
+  }
+  document.getElementById('mjCatSearch').addEventListener('input', window.debounce(renderMjCatModal, 200));
+  document.getElementById('mjCatGestorFilter').addEventListener('change', (e) => { mjCatGestorFilterVal = e.target.value; renderMjCatModal(); });
+  document.getElementById('btnCloseMjCat').addEventListener('click', () => { document.getElementById('mjCatModalOverlay').style.display = 'none'; });
+  document.getElementById('mjCatModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'mjCatModalOverlay') document.getElementById('mjCatModalOverlay').style.display = 'none'; });
+
   function getTeamRenderData(teamKey){
     if (teamKey === 'ALL_TEAMS'){
       const total = {meta:0, int:0, cat:{IND:{meta:0,int:0},SS:{meta:0,int:0},PME:{meta:0,int:0},ADM:{meta:0,int:0}}};
@@ -1858,7 +1961,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     mjCharts.categoria = new Chart(document.getElementById('mjChartCategoria'), {
       type:'bar',
       data:{ labels:catKeys.map(k=>catLabels[k]), datasets:[{ label:'% Atingimento', data:catKeys.map(k=>(total.cat[k].meta?total.cat[k].int/total.cat[k].meta:0)*100), backgroundColor:catKeys.map(k=>{ const p = total.cat[k].meta?total.cat[k].int/total.cat[k].meta:0; return p>=1?'#16B87A':(p>=0.7?'#FFB81C':'#F5364A'); }), borderRadius:6 }] },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>c.raw.toFixed(1)+'%'}}}, scales:{x:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{callback:v=>v+'%'}}, y:{grid:{display:false}}} }
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        onClick:(evt,els)=>{ if(!els||!els.length) return; const key = catKeys[els[0].index]; if (key === 'ADM') return; const c = total.cat[key]; openMjCatModal(key, c.meta ? c.int/c.meta : 0); },
+        onHover:(evt,els)=>{ if(evt&&evt.native&&evt.native.target){ const key = els&&els.length ? catKeys[els[0].index] : null; evt.native.target.style.cursor = (key && key!=='ADM') ? 'pointer' : 'default'; } },
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>c.raw.toFixed(1)+'%'}}}, scales:{x:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{callback:v=>v+'%'}}, y:{grid:{display:false}}} }
     });
 
     destroyMJChart('metaGestor');
@@ -5254,8 +5360,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     'PABLO SERGIO RIBEIRO AMORA':'Pablo Amora'
   };
   const SENIOR_TEAM_LABELS = {
-    'CAMILA FOIADELLI': 'Camila Foiadelli',
-    'LEONARDO MARIANO': 'Leonardo Mariano',
+    'CAMILA FOIADELLI': 'Camila Foiadelli (Plataforma)',
+    'LEONARDO MARIANO': 'Leonardo Mariano (ABC)',
     'ESTEVÃO CARDOSO': 'Estevão Cardoso (Cauda Longa)',
     'MARCELO LIMA': 'Marcelo Lima (Digital)',
     'MARIA CABRAL': 'Maria Cabral (Interior)'
