@@ -332,6 +332,17 @@
   .resumo-card .rc-stats{display:flex; gap:24px; flex-wrap:wrap;}
   .resumo-card .rc-label{font-size:10.5px; color:var(--muted); margin-bottom:2px; font-weight:600;}
   .resumo-card .rc-value{font-size:19px; font-weight:800;}
+
+  /* Resultado da busca (Elegibilidade) — quando poucas corretoras casam com a busca, os
+     gráficos de % viram cards com o dado direto de cada uma. */
+  .search-result-card{background:#f8faff; border-left:3px solid var(--primary-light); border-radius:11px; padding:14px 16px; cursor:pointer; transition:box-shadow .15s ease;}
+  .search-result-card:hover{box-shadow:0 4px 12px rgba(16,30,99,.1);}
+  .search-result-card .sr-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap;}
+  .search-result-card .sr-name{font-weight:700; color:var(--navy); font-size:13.5px;}
+  .search-result-card .sr-meta{font-size:11px; color:var(--muted); margin-top:2px;}
+  .search-result-card .sr-stats{display:flex; gap:22px; flex-wrap:wrap;}
+  .search-result-card .sr-stat .sr-label{font-size:10.5px; color:var(--muted); margin-bottom:2px; font-weight:600;}
+  .search-result-card .sr-stat .sr-value{font-size:17px; font-weight:800;}
   table{width:100%; border-collapse:collapse; font-size:12.5px;}
   thead th{text-align:left; padding:10px 11px; background:#f8fafc; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid var(--line); font-weight:700; white-space:nowrap;}
   thead th[data-k]{cursor:pointer; user-select:none;}
@@ -1320,10 +1331,29 @@
     <div id="elModeCorretoras">
     <!-- ===== VISÃO EXECUTIVA (novo) ===== -->
     <div id="execSection">
+      <div id="execSearchBanner" style="display:none; margin-bottom:12px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; font-size:12.5px; color:var(--blue); font-weight:600;"></div>
+      <div id="execKpiFilterBanner" style="display:none; margin-bottom:12px; padding:10px 14px; background:#fff7ed; border:1px solid #fdba74; border-radius:10px; font-size:12.5px; color:#9a3412; font-weight:600; align-items:center; justify-content:space-between; gap:10px;"></div>
       <div class="exec-grid" id="execKpiRow"></div>
 
 
-      <div class="grid-2 even">
+      <div class="panel" id="execSearchResultsPanel" style="display:none;">
+        <h2>Resultado da busca</h2>
+        <div class="panel-sub">Gráficos de % não fazem sentido pra poucas corretoras — aqui vai a informação direta de cada uma encontrada.</div>
+        <div id="execSearchResultsCards" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+
+      <div class="panel" id="execFilterSummaryPanel" style="display:none;">
+        <h2 id="execFilterSummaryTitle">Resumo da fatia filtrada</h2>
+        <div class="panel-sub" id="execFilterSummarySub">Distribuição por gestor dentro do filtro ativo — a lista completa está na tabela "Base de Corretoras" abaixo.</div>
+        <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+          <div style="flex:1; min-width:220px;">
+            <div style="height:120px;"><canvas id="chartFilterSummaryGestor"></canvas></div>
+          </div>
+          <div id="execFilterSummaryStats" style="display:flex; gap:22px; flex-wrap:wrap;"></div>
+        </div>
+      </div>
+
+      <div class="grid-2 even" id="execGestorHeatmapRow">
         <div class="panel">
           <h2 id="elGestorTitle">Elegibilidade por Gestor</h2>
           <div class="panel-sub" id="elGestorSub">% de corretoras elegíveis na carteira de cada gestor — clique numa barra para filtrar a aba inteira</div>
@@ -1397,8 +1427,8 @@
     </div>
 
 <div class="panel">
-      <h2>Base de Corretoras</h2>
-      <div class="panel-sub">Clique em uma linha para ver a evolução mensal · Clique no cabeçalho para ordenar</div>
+      <h2 id="baseCorretorasTitle">Base de Corretoras</h2>
+      <div class="panel-sub" id="baseCorretorasSub">Clique em uma linha para ver a evolução mensal · Clique no cabeçalho para ordenar</div>
       <div class="table-wrap" id="baseCorretorasWrap" style="max-height:620px; overflow-y:auto;">
         <table>
           <thead style="position:sticky; top:0; z-index:2; background:#fff;">
@@ -1436,13 +1466,13 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="insightsPanel">
       <h2><i class=ic-bulb></i> Insights Automáticos</h2>
       <div class="panel-sub">Gerados a partir dos números reais do filtro atual — não é texto genérico</div>
       <ul id="insightsList" style="list-style:none; display:flex; flex-direction:column; gap:10px; font-size:13px; padding:0;"></ul>
     </div>
 
-    <div class="grid-2 even">
+    <div class="grid-2 even" id="elegRankGridPanel">
       <div class="panel">
         <h2>Elegibilidade da Carteira</h2>
         <div class="panel-sub">% de corretoras elegíveis vs. não elegíveis (filtro atual)</div>
@@ -1513,16 +1543,25 @@
       </div>
     </div>
 
-    <div class="panel" id="chartDrilldown" style="display:none;">
-      <div class="detail-head">
-        <div><h3 id="chartDrilldownTitle">—</h3><div class="meta" id="chartDrilldownSub">Clique em uma barra do gráfico para ver as corretoras</div></div>
-        <button class="detail-close" id="chartDrilldownClose">Fechar ✕</button>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Código</th><th>Corretora</th><th>Gestor</th><th class="num">Total 17M</th><th class="num">Meses Parado</th></tr></thead>
-          <tbody id="chartDrilldownBody"></tbody>
-        </table>
+    <div id="chartDrilldownOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
+      <div class="panel" id="chartDrilldown" style="max-width:820px; width:100%; max-height:88vh; overflow-y:auto; margin:0;">
+        <div class="detail-head">
+          <div><h3 id="chartDrilldownTitle">—</h3><div class="meta" id="chartDrilldownSub">Clique em uma barra do gráfico para ver as corretoras</div></div>
+          <button class="detail-close" id="chartDrilldownClose">Fechar ✕</button>
+        </div>
+        <div style="display:flex; gap:18px; align-items:center; margin:6px 0 16px; padding:12px 14px; background:#f8faff; border-radius:11px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:140px;">
+            <div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.5px;">Distribuição por gestor</div>
+            <div style="height:90px; margin-top:6px;"><canvas id="chartDrilldownGestor"></canvas></div>
+          </div>
+          <div id="chartDrilldownStats" style="display:flex; gap:20px; flex-wrap:wrap;"></div>
+        </div>
+        <div class="table-wrap pend-scroll" style="max-height:420px;">
+          <table>
+            <thead><tr><th>Código</th><th>Corretora</th><th>Gestor</th><th class="num">Total 17M</th><th class="num">Meses Parado</th></tr></thead>
+            <tbody id="chartDrilldownBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -2426,7 +2465,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
     document.getElementById('resumoCards').innerHTML = gestores.map(g => {
       const s = resumoPmeStats(g);
-      return `<div class="resumo-card">
+      return `<div class="resumo-card" style="cursor:pointer" onclick="window.__openResumoDetail('${g.replace(/'/g,"\\'")}','pme')" title="Ver detalhes de ${g}">
         <div class="rc-head"><div class="rc-avatar">${initialsOf(g)}</div><div class="rc-name">${g}</div></div>
         <div class="rc-stats">
           <div class="rc-stat"><div class="rc-label">Em Funil</div><div class="rc-value" style="color:var(--navy);">${s.funil}</div></div>
@@ -2447,7 +2486,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       const rows = PENDENCIAS_PF[g] || [];
       const porStatus = statuses.map(s => rows.filter(p=>p.status===s).reduce((sum,p)=>sum+(p.vidas||0),0));
       const total = porStatus.reduce((a,b)=>a+b,0);
-      return `<tr><td class="name">${g}</td>${porStatus.map(v=>`<td class="num">${v||''}</td>`).join('')}<td class="num" style="font-weight:700;">${total}</td></tr>`;
+      return `<tr style="cursor:pointer" onclick="window.__openResumoDetail('${g.replace(/'/g,"\\'")}','pf')" title="Ver detalhes de ${g}"><td class="name">${g}</td>${porStatus.map(v=>`<td class="num">${v||''}</td>`).join('')}<td class="num" style="font-weight:700;">${total}</td></tr>`;
     }).join('');
     document.getElementById('resumoPfTable').innerHTML = thead + '<tbody>' + tbody + '</tbody>';
   }
@@ -2456,6 +2495,16 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const gestorFiltro = document.getElementById('resumoGestorSel').value;
     if (resumoActiveTab === 'pme') renderResumoPme(gestorFiltro); else renderResumoPf(gestorFiltro);
   }
+
+  // Clique num card/linha do Resumo do Dia leva pro popup detalhado que já existe no Desempenho
+  // Comercial (mesma tabela de propostas/orçamentos por gestor) — reaproveita window.showPendenciasModal
+  // em vez de duplicar a lógica de tabela, só troca de aba (PME/PF) pra bater com o que estava sendo visto aqui.
+  window.__openResumoDetail = function(gestorNome, tab){
+    document.getElementById('resumoModalOverlay').style.display = 'none';
+    if (typeof showView === 'function') showView('mj'); // leva pra tela de Desempenho Comercial por trás do popup
+    window.showPendenciasModal(gestorNome);
+    if (tab === 'pf') document.getElementById('pendTabPf').click();
+  };
 
   window.showResumoModal = function(){
     const sel = document.getElementById('resumoGestorSel');
@@ -2669,8 +2718,27 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   function computePeriodElegRank(d, selectedMonths){
     const isCurrentPeriod = Math.max.apply(null, selectedMonths) === d.m.length - 1;
     if (isCurrentPeriod){
-      // período inclui o mês mais recente (ciclo em andamento) -> campos oficiais da planilha, sem recalcular
-      return { periodTotal: d.m[d.m.length-1], meta: d.meta3tri ? d.meta3tri/3 : 0, el: d.el, rk: d.rk, factor: 0.80 };
+      // A elegibilidade "oficial" é sempre calculada por TRIMESTRE — o trimestre vigente
+      // (mesmo parcial, se ainda não fechou) contra o trimestre ANTERIOR completo — nunca por
+      // mês isolado, e independe de qual período o usuário tiver selecionado na tela. Confirmado
+      // comparando com o arquivo mestre real da Hapvida (10/08/26): Meta 3TRI26 = 2TRI26 Total ×
+      // 0,80 exatamente, e Elegível = 3TRI-até-agora ≥ essa meta. Usa sempre PERIOD_DEFS.trimestre
+      // (que já cresce sozinho conforme os meses do trimestre vão sendo importados) em vez do
+      // selectedMonths recebido, pra não repetir o erro de comparar só "mês atual vs mês anterior".
+      const triList = PERIOD_DEFS.trimestre;
+      const curTri = triList[triList.length - 1];
+      const prevTri = triList.length >= 2 ? triList[triList.length - 2] : null;
+      const periodTotal = curTri.months.reduce((s,i)=>s+(d.m[i]||0), 0);
+      const prevTotal = prevTri ? prevTri.months.reduce((s,i)=>s+(d.m[i]||0), 0) : 0;
+      const factor = isNewEra(curTri.months) ? 0.80 : 1.10;
+      const meta = prevTri ? prevTotal * factor : 0;
+      // Precisa de uma meta real (trimestre anterior > 0) pra "elegível" valer algo — uma
+      // corretora que ficou 3 meses zerada e vendeu qualquer coisinha agora não deveria virar
+      // elegível só por não ter de onde "cair". Testei permitir isso e inflou o número muito
+      // além do real (corretoras com histórico esporádico "reativando" em massa).
+      const el = (meta > 0 && periodTotal >= meta) ? 1 : 0;
+      const rk = computeRankingFromVolume(periodTotal, curTri.months);
+      return { periodTotal, meta, el, rk, factor };
     }
     const periodTotal = selectedMonths.reduce((s,i)=>s+(d.m[i]||0), 0);
     const rk = computeRankingFromVolume(periodTotal, selectedMonths);
@@ -2829,6 +2897,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   RANKS_PRESENT.forEach(r => { const o=document.createElement('option'); o.value=r; o.textContent=r; selRank.appendChild(o); });
 
   let sortKey = 'tot', sortDir = -1, page = 1, perPage = 50;
+  // Clique num dos 4 cards executivos (Elegíveis/Quase/Em Risco/Não Elegíveis) filtra a aba
+  // inteira pra essa fatia — igual clicar numa barra do gráfico "Elegibilidade por Gestor" já
+  // fazia. Clicar de novo no mesmo card limpa o filtro (toggle). null = nenhum filtro de KPI ativo.
+  let activeKpiFilter = null; // null | 'eleg' | 'quase' | 'risco' | 'distantes'
   function isReactivation(d){ return d.u3 === 0 && d.tot >= 20; }
 
   function applyFilters(){
@@ -2845,13 +2917,28 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       if (rk && (calc ? calc.rk : d.rk) !== rk) return false;
       if (q && !(norm(d.n).includes(q) || norm(d.c).includes(q))) return false;
       if (onlyReact && !isReactivation(d)) return false;
+      // Filtro de KPI (clique num dos 4 cards executivos) — mesma classificação usada nos
+      // próprios cards (faixaIdx/recent2), só que aplicada aqui pra filtrar a aba inteira.
+      if (activeKpiFilter){
+        const ctx = calc || getElegCtx(d, null);
+        const isEl = ctx.el === 1;
+        if (activeKpiFilter === 'eleg' && !isEl) return false;
+        if (activeKpiFilter === 'quase' && !(!isEl && faixaIdx(ctx) === 3)) return false;
+        if (activeKpiFilter === 'distantes' && !(!isEl && faixaIdx(ctx) !== 3)) return false;
+        if (activeKpiFilter === 'risco'){
+          if (!isEl) return false;
+          const lm = periodMonthsFilter ? Math.max.apply(null, periodMonthsFilter) : d.m.length - 1;
+          const recent2 = (d.m[lm]||0) + (lm>0 ? (d.m[lm-1]||0) : 0);
+          if (recent2 !== 0) return false;
+        }
+      }
       return true;
     });
   }
 
   function isAnyFilterActive(){
     return !!(selGestor.value || document.getElementById('fEleg').value || selRank.value ||
-      document.getElementById('fSearch').value.trim() || document.getElementById('fReact').checked);
+      document.getElementById('fSearch').value.trim() || document.getElementById('fReact').checked || activeKpiFilter);
   }
 
   function monthsSinceLastSale(d){
@@ -2868,9 +2955,36 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   const GESTOR_COLORS = {'Agatha Sakamoto':'#2E52D4','Patricia Monks':'#F26B21','Jonathan Leal':'#101E63','Pablo Amora':'#16B87A','Sem Gestor Atribuído':'#94a3b8'};
 
   function showChartDrilldown(title, list){
+    // Precisa mostrar o overlay ANTES de criar o gráfico: com o container ainda
+    // "display:none", o canvas mede largura/altura 0 e o Chart.js nasce invisível.
+    document.getElementById('chartDrilldownOverlay').style.display = 'flex';
     const sorted = [...list].sort((a,b)=>b.tot-a.tot);
+    const totalVidas = sorted.reduce((s,d)=>s+d.tot,0);
     document.getElementById('chartDrilldownTitle').textContent = `${title} (${sorted.length} corretora${sorted.length!==1?'s':''})`;
-    document.getElementById('chartDrilldownSub').textContent = `${fmt0(sorted.reduce((s,d)=>s+d.tot,0))} vidas em potencial · clique em uma linha para ver a evolução mensal`;
+    document.getElementById('chartDrilldownSub').textContent = `${fmt0(totalVidas)} vidas em potencial · clique em uma linha para ver a evolução mensal`;
+
+    // Distribuição por gestor — mesma cor usada no resto da view, pra ficar fácil de
+    // reconhecer de relance quem concentra a maior parte da lista.
+    const byGestor = {};
+    sorted.forEach(d => { (byGestor[d.g] = byGestor[d.g] || []).push(d); });
+    const gestorNames = Object.keys(byGestor).sort((a,b)=>byGestor[b].length-byGestor[a].length);
+    destroyChart('drilldownGestor');
+    charts.drilldownGestor = new Chart(document.getElementById('chartDrilldownGestor'), {
+      type:'bar',
+      data:{ labels: gestorNames.map(shortGestor), datasets:[{ data: gestorNames.map(g=>byGestor[g].length),
+        backgroundColor: gestorNames.map(g=>GESTOR_COLORS[g]||'#94a3b8'), borderRadius:6, maxBarThickness:22 }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.parsed.x} corretora${c.parsed.x!==1?'s':''}`}}},
+        scales:{ x:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{precision:0, font:{size:9}}}, y:{grid:{display:false}, ticks:{font:{size:10, weight:'600'}}} } }
+    });
+    const maiorGestor = gestorNames[0];
+    const mediaParado = sorted.length ? Math.round(sorted.reduce((s,d)=>s+monthsSinceLastSale(d),0)/sorted.length) : 0;
+    document.getElementById('chartDrilldownStats').innerHTML = `
+      <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Vidas em potencial</div><div style="font-size:19px; font-weight:800; color:var(--navy);">${fmt0(totalVidas)}</div></div>
+      <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Maior concentração</div><div style="font-size:14px; font-weight:700; color:var(--navy);">${maiorGestor ? shortGestor(maiorGestor) : '—'}</div></div>
+      <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Média sem vender</div><div style="font-size:19px; font-weight:800; color:var(--navy);">${mediaParado} meses</div></div>
+    `;
+
     document.getElementById('chartDrilldownBody').innerHTML = sorted.map(d => `
       <tr class="clickable" data-c="${d.c}">
         <td style="color:var(--muted); font-size:11.5px;">${d.c}</td>
@@ -2882,12 +2996,12 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.querySelectorAll('#chartDrilldownBody tr').forEach(tr => {
       tr.addEventListener('click', () => showDetail(tr.dataset.c));
     });
-    const panel = document.getElementById('chartDrilldown');
-    panel.style.display = '';
-    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
   }
   document.getElementById('chartDrilldownClose').addEventListener('click', () => {
-    document.getElementById('chartDrilldown').style.display = 'none';
+    document.getElementById('chartDrilldownOverlay').style.display = 'none';
+  });
+  document.getElementById('chartDrilldownOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'chartDrilldownOverlay') document.getElementById('chartDrilldownOverlay').style.display = 'none';
   });
 
   let charts = {};
@@ -3310,6 +3424,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     // rolar até a tabela "Base de Corretoras" lá embaixo pra achar a informação real).
     const onlyReact = document.getElementById('fReact').checked;
     if (onlyReact){
+      document.getElementById('execSearchBanner').style.display = 'none';
+      document.getElementById('execKpiFilterBanner').style.display = 'none';
+      document.getElementById('execSearchResultsPanel').style.display = 'none';
+      document.getElementById('execGestorHeatmapRow').style.display = ''; // Elegib. por Gestor é reaproveitado abaixo (reativação por gestor)
       document.getElementById('heatmapPanel').style.display = 'none';
       document.getElementById('execFunnelFaixasRow').style.display = 'none';
       document.getElementById('execProxLossRow').style.display = 'none';
@@ -3424,6 +3542,86 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
                           .sort((a,b) => (b.ctx.periodTotal-b.prev.periodTotal) - (a.ctx.periodTotal-a.prev.periodTotal));
     const pctEl = n ? (eleg.length / n * 100) : 0;
 
+    // Quando a busca por nome/código está ativa, os cards abaixo recalculam em cima só do
+    // resultado (correto matematicamente — "0 elegíveis" pode ser real pra 1 corretora), mas
+    // sem contexto isso parece "não achei nada". Deixa isso explícito antes dos cards.
+    const searchQ = document.getElementById('fSearch').value.trim();
+    const searchBanner = document.getElementById('execSearchBanner');
+    // Qualquer filtro que restrinja a uma fatia específica (busca por nome/código OU um dos
+    // cards de KPI) faz os gráficos de % pararem de fazer sentido: com poucas corretoras eles
+    // ficam vazios, e com uma categoria inteira já pré-selecionada (ex.: "Não Elegíveis") o
+    // resultado vira meio óbvio/redundante. Troca por algo direto: cards por corretora quando
+    // sobra pouca gente, ou um resumo por gestor quando a fatia ainda é grande.
+    const isNarrowed = !!(searchQ || activeKpiFilter);
+    const smallSlice = isNarrowed && n > 0 && n <= 8;
+    const bigSlice = isNarrowed && n > 8;
+    if (searchQ) {
+      searchBanner.style.display = '';
+      searchBanner.innerHTML = n
+        ? `🔍 Busca ativa: mostrando os números apenas de <b>${n} corretora${n!==1?'s':''}</b> encontrada${n!==1?'s':''} para "<b>${searchQ}</b>" — ${smallSlice ? 'veja o detalhe de cada uma logo abaixo' : 'os cards acima refletem só esse resultado, não o time todo'}.`
+        : `🔍 Nenhuma corretora encontrada para "<b>${searchQ}</b>". Confira o nome ou código digitado.`;
+    } else {
+      searchBanner.style.display = 'none';
+    }
+
+    document.getElementById('execSearchResultsPanel').style.display = smallSlice ? '' : 'none';
+    document.getElementById('execFilterSummaryPanel').style.display = bigSlice ? '' : 'none';
+    document.getElementById('execGestorHeatmapRow').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('execFunnelFaixasRow').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('execProxLossRow').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('execEvolPanel').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('segInatWrap').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('insightsPanel').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('elegRankGridPanel').style.display = isNarrowed ? 'none' : '';
+
+    if (smallSlice){
+      document.getElementById('execSearchResultsCards').innerHTML = rows.map(r => {
+        const gap = r.ctx.periodTotal - r.ctx.meta;
+        return `<div class="search-result-card" data-c="${r.d.c}">
+          <div class="sr-head">
+            <div>
+              <div class="sr-name">${r.d.n}</div>
+              <div class="sr-meta">Código ${r.d.c} · Gestor: ${shortGestor(r.d.g)} · Ranking: ${r.ctx.rk}</div>
+            </div>
+            ${r.ctx.el===1 ? '<span class="tag elig">Elegível</span>' : '<span class="tag noelig">Não elegível</span>'}
+          </div>
+          <div class="sr-stats">
+            <div class="sr-stat"><div class="sr-label">Total 17M</div><div class="sr-value" style="color:var(--navy);">${fmt0(r.d.tot)}</div></div>
+            <div class="sr-stat"><div class="sr-label">${cycleLabel} Atual</div><div class="sr-value" style="color:var(--primary-light);">${fmt0(r.ctx.periodTotal)}</div></div>
+            <div class="sr-stat"><div class="sr-label">Meta ${cycleLabel}</div><div class="sr-value" style="color:#a5690f;">${fmt0(r.ctx.meta)}</div></div>
+            <div class="sr-stat"><div class="sr-label">Gap</div><div class="sr-value" style="color:${gap>=0?'#16B87A':'#F5364A'};">${gap>=0?'+':''}${fmt0(gap)}</div></div>
+          </div>
+        </div>`;
+      }).join('');
+      document.querySelectorAll('#execSearchResultsCards .search-result-card').forEach(card => {
+        card.addEventListener('click', () => showDetail(card.dataset.c));
+      });
+    }
+
+    if (bigSlice){
+      const activeLabel = { eleg:'Elegíveis', quase:'Quase Elegíveis (76–99%)', risco:'Em Risco', distantes:'Não Elegíveis (distantes)' }[activeKpiFilter] || 'busca';
+      document.getElementById('execFilterSummaryTitle').textContent = `Resumo da fatia filtrada — ${searchQ ? `"${searchQ}"` : activeLabel}`;
+      const byGestorSlice = {};
+      rows.forEach(r => { (byGestorSlice[r.d.g] = byGestorSlice[r.d.g] || []).push(r); });
+      const gestorNamesSlice = Object.keys(byGestorSlice).sort((a,b)=>byGestorSlice[b].length-byGestorSlice[a].length);
+      destroyChart('filterSummaryGestor');
+      charts.filterSummaryGestor = new Chart(document.getElementById('chartFilterSummaryGestor'), {
+        type:'bar',
+        data:{ labels: gestorNamesSlice.map(shortGestor), datasets:[{ data: gestorNamesSlice.map(g=>byGestorSlice[g].length),
+          backgroundColor: gestorNamesSlice.map(g=>GESTOR_COLORS[g]||'#94a3b8'), borderRadius:6, maxBarThickness:22 }] },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.parsed.x} corretora${c.parsed.x!==1?'s':''}`}}},
+          scales:{ x:{beginAtZero:true, grid:{color:'#eef1f6'}, ticks:{precision:0, font:{size:9}}}, y:{grid:{display:false}, ticks:{font:{size:10, weight:'600'}}} } }
+      });
+      const totalVidasSlice = rows.reduce((s,r)=>s+r.d.tot,0);
+      const maiorGestorSlice = gestorNamesSlice[0];
+      document.getElementById('execFilterSummaryStats').innerHTML = `
+        <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Corretoras na fatia</div><div style="font-size:19px; font-weight:800; color:var(--navy);">${fmt0(n)}</div></div>
+        <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Vidas (total 17M)</div><div style="font-size:19px; font-weight:800; color:var(--navy);">${fmt0(totalVidasSlice)}</div></div>
+        <div><div style="font-size:10.5px; color:var(--muted); font-weight:700; text-transform:uppercase;">Maior concentração</div><div style="font-size:14px; font-weight:700; color:var(--navy);">${maiorGestorSlice ? shortGestor(maiorGestorSlice) : '—'}</div></div>
+      `;
+    }
+
     const deltaChip = (cur, prev, invert) => {
       if (prev === null) return `<span class="ek-delta flat">— sem base p/ comparar</span>`;
       const diff = cur - prev;
@@ -3435,36 +3633,38 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
 
     // ---- KPIs executivos ----
     const kpiDefs = [
-      { bar:'#16B87A', ico:'<i class=ic-check></i>', icoBg:'rgba(22,184,122,.12)', color:'#16B87A',
+      { key:'eleg', bar:'#16B87A', ico:'<i class=ic-check></i>', icoBg:'rgba(22,184,122,.12)', color:'#16B87A',
         label:'Elegíveis', value: fmt0(eleg.length), pct: pctEl.toFixed(1)+'% do total',
         delta: deltaChip(eleg.length, hasPrev ? prevEleg.length : null),
         note: periodMonths ? cycleLabel+' (recalc.)' : 'Coluna oficial da planilha',
         list: eleg, title:'Elegíveis — '+cycleLabel },
-      { bar:'#FFB81C', ico:'<i class=ic-trend></i>', icoBg:'rgba(255,184,28,.16)', color:'#a5690f',
+      { key:'quase', bar:'#FFB81C', ico:'<i class=ic-trend></i>', icoBg:'rgba(255,184,28,.16)', color:'#a5690f',
         label:'Quase Elegíveis (76–99%)', value: fmt0(quase.length), pct: n?(quase.length/n*100).toFixed(1)+'% do total':'0%',
         delta: deltaChip(quase.length, hasPrev ? prevQuase.length : null),
         note:'Menor esforço → maior retorno', list: quase, title:'Quase elegíveis (76–99% da meta) — '+cycleLabel },
-      { bar:'#F26B21', ico:'<i class=ic-warn></i>', icoBg:'rgba(242,107,33,.12)', color:'#F26B21',
+      { key:'risco', bar:'#F26B21', ico:'<i class=ic-warn></i>', icoBg:'rgba(242,107,33,.12)', color:'#F26B21',
         label:'Em Risco', value: fmt0(risco.length), pct: eleg.length?(risco.length/eleg.length*100).toFixed(1)+'% das elegíveis':'0%',
         delta:'<span class="ek-delta '+(risco.length?'down':'up')+'">'+(risco.length?'requer contato':'nenhuma')+'</span>',
         note:'Elegíveis sem venda nos últimos 2 meses', list: risco, title:'Em risco — elegíveis sem vendas recentes' },
-      { bar:'#F5364A', ico:'<i class=ic-alarm></i>', icoBg:'rgba(245,54,74,.10)', color:'#F5364A',
+      { key:'distantes', bar:'#F5364A', ico:'<i class=ic-alarm></i>', icoBg:'rgba(245,54,74,.10)', color:'#F5364A',
         label:'Não Elegíveis (distantes)', value: fmt0(distantes.length), pct: n?(distantes.length/n*100).toFixed(1)+'% do total':'0%',
         delta:'<span class="ek-delta flat">abaixo de 76% da meta</span>',
         note:'Foco em reativação estrutural', list: distantes, title:'Não elegíveis abaixo de 76% da meta — '+cycleLabel },
-      { bar:'#1D33A8', ico:'<i class=ic-users></i>', icoBg:'rgba(29,51,168,.10)', color:'#101E63',
+      { key:null, bar:'#1D33A8', ico:'<i class=ic-users></i>', icoBg:'rgba(29,51,168,.10)', color:'#101E63',
         label:'Total de Corretoras', value: fmt0(n), pct:'100% do filtro atual',
         delta:'<span class="ek-delta flat">base analisada</span>', note:'', list:null },
     ];
-    document.getElementById('execKpiRow').innerHTML = kpiDefs.map((k,i)=>`
-      <div class="exec-kpi ${k.list?'clickable':''}" data-i="${i}" style="--ek-bar:${k.bar}; --ek-ico-bg:${k.icoBg}; --ek-color:${k.color};" ${k.list?'title="Clique para ver as corretoras"':''}>
+    document.getElementById('execKpiRow').innerHTML = kpiDefs.map((k,i)=>{
+      const isActive = k.key && activeKpiFilter === k.key;
+      return `<div class="exec-kpi ${k.key?'clickable':''}" data-i="${i}" style="--ek-bar:${k.bar}; --ek-ico-bg:${k.icoBg}; --ek-color:${k.color}; ${isActive?'box-shadow:0 0 0 2.5px '+k.bar+'; transform:translateY(-1px);':''}" ${k.key?`title="${isActive?'Clique para limpar o filtro':'Clique para filtrar o dashboard por essa fatia'}"`:''}>
         <div class="ek-ico">${k.ico}</div>
-        <div class="ek-label">${k.label}</div>
+        <div class="ek-label">${k.label}${isActive?' <span style="font-size:9.5px; font-weight:800; letter-spacing:.3px;">● FILTRANDO</span>':''}</div>
         <div class="ek-value">${k.value}</div>
         <div class="ek-pct">${k.pct}</div>
         <div>${k.delta}</div>
         ${k.note?`<div class="ek-note">${k.note}</div>`:''}
-      </div>`).join('') + `
+      </div>`;
+    }).join('') + `
       <div class="exec-kpi" style="--ek-bar:linear-gradient(90deg,#2E52D4,#16B87A);">
         <div class="ek-ico" style="background:rgba(46,82,212,.10);"><i class=ic-award></i></div>
         <div class="ek-label">Elegibilidade Geral</div>
@@ -3474,8 +3674,22 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       </div>`;
     document.querySelectorAll('#execKpiRow .exec-kpi[data-i]').forEach(el => {
       const k = kpiDefs[Number(el.dataset.i)];
-      if (k && k.list) el.addEventListener('click', () => showChartDrilldown(k.title, k.list.map(r=>r.d)));
+      if (k && k.key) el.addEventListener('click', () => {
+        activeKpiFilter = (activeKpiFilter === k.key) ? null : k.key;
+        page = 1;
+        renderActive();
+      });
     });
+
+    const kpiFilterBanner = document.getElementById('execKpiFilterBanner');
+    if (activeKpiFilter){
+      const activeDef = kpiDefs.find(k => k.key === activeKpiFilter);
+      kpiFilterBanner.style.display = 'flex';
+      kpiFilterBanner.innerHTML = `<span>🎯 Filtro ativo: <b>${activeDef ? activeDef.label : activeKpiFilter}</b> — todo o painel (gráficos e tabela) está mostrando só essa fatia.</span><button class="btn-reset" id="btnClearKpiFilter" style="font-size:11.5px; padding:4px 10px;">Voltar ao normal</button>`;
+      document.getElementById('btnClearKpiFilter').addEventListener('click', () => { activeKpiFilter = null; page = 1; renderActive(); });
+    } else {
+      kpiFilterBanner.style.display = 'none';
+    }
 
     destroyChart('gauge');
     charts.gauge = new Chart(document.getElementById('chartGauge'), {
@@ -3860,16 +4074,20 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     });
 
     const RANKING_MIN = 5; // abaixo disso, "Top N" não é uma comparação útil
-    const showRankingCharts = filtered.length >= RANKING_MIN;
+    // Mesma regra do resto da view: com busca ou card de KPI filtrando, "Top 15" dentro de uma
+    // fatia já pré-selecionada (ex.: Top 15 DENTRO de "Não Elegíveis") é redundante — a tabela
+    // "Base de Corretoras" acima (já ordenável) cobre esse caso melhor.
+    const isNarrowedRanking = !!(document.getElementById('fSearch').value.trim() || activeKpiFilter);
+    const showRankingCharts = filtered.length >= RANKING_MIN && !isNarrowedRanking;
     document.getElementById('rankingChartsSection').style.display = showRankingCharts ? '' : 'none';
-    document.getElementById('fewResultsNotice').style.display = (!showRankingCharts && filtered.length > 0) ? '' : 'none';
+    document.getElementById('fewResultsNotice').style.display = (!showRankingCharts && !isNarrowedRanking && filtered.length > 0) ? '' : 'none';
     if (!showRankingCharts || !document.getElementById('fReact').checked) {
-      document.getElementById('chartDrilldown').style.display = 'none';
+      document.getElementById('chartDrilldownOverlay').style.display = 'none';
     }
 
     if (showRankingCharts) {
       const reactOnlyMode = document.getElementById('fReact').checked;
-      if (!reactOnlyMode) document.getElementById('chartDrilldown').style.display = 'none';
+      if (!reactOnlyMode) document.getElementById('chartDrilldownOverlay').style.display = 'none';
 
       if (reactOnlyMode) {
         // Modo reativação: troca os 2 gráficos por análises específicas (gestor + tempo parado)
@@ -3958,6 +4176,19 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
         document.getElementById('detailPanel').classList.remove('show');
       }
     }
+
+    // Título da tabela reflete o filtro ativo — sem isso "Base de Corretoras" ficava genérico
+    // mesmo com o card "Não Elegíveis" (ou busca/gestor) filtrando a tela inteira, dando a
+    // impressão de que a tabela ainda mostrava tudo.
+    const kpiFilterLabels = { eleg:'Elegíveis', quase:'Quase Elegíveis (76–99%)', risco:'Em Risco', distantes:'Não Elegíveis' };
+    const titleParts = [];
+    if (activeKpiFilter) titleParts.push(kpiFilterLabels[activeKpiFilter] || activeKpiFilter);
+    if (selGestor.value) titleParts.push(shortGestor(selGestor.value));
+    const searchQTable = document.getElementById('fSearch').value.trim();
+    document.getElementById('baseCorretorasTitle').textContent = titleParts.length ? `Corretoras ${titleParts.join(' · ')}` : 'Base de Corretoras';
+    document.getElementById('baseCorretorasSub').textContent = searchQTable
+      ? `Resultado da busca por "${searchQTable}" · Clique em uma linha para ver a evolução mensal`
+      : 'Clique em uma linha para ver a evolução mensal · Clique no cabeçalho para ordenar';
 
     renderTable(filtered);
   }
@@ -4165,6 +4396,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('btnReset').addEventListener('click', ()=>{
     selGestor.value=''; document.getElementById('fEleg').value=''; selRank.value='';
     document.getElementById('fSearch').value=''; document.getElementById('fReact').checked=false;
+    activeKpiFilter = null;
     page=1; renderActive();
   });
   document.getElementById('btnPrev').addEventListener('click', ()=>{ if(page>1){page--; renderTable(applyFilters());} });
