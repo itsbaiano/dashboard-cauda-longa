@@ -486,15 +486,15 @@
   .prox-row .p-gap b{display:block; font-size:12.5px; color:var(--navy);}
   .prox-row .p-gap span{color:var(--accent-coral); font-weight:700; font-size:10px;}
 
-  /* Perderam elegibilidade */
-  .loss-list{display:flex; flex-direction:column; gap:8px;}
-  .loss-row{display:grid; grid-template-columns:26px 1fr auto; gap:10px; align-items:center; padding:10px 12px; background:rgba(245,54,74,.045); border:1px solid rgba(245,54,74,.18); border-radius:11px; cursor:pointer; transition:box-shadow .15s ease;}
-  .loss-row:hover{box-shadow:0 3px 10px rgba(245,54,74,.12);}
-  .loss-row .l-ico{width:26px; height:26px; border-radius:50%; background:rgba(245,54,74,.12); color:var(--accent-red); display:flex; align-items:center; justify-content:center; font-size:12px;}
-  .loss-row .l-name b{display:block; font-size:12px; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px;}
-  .loss-row .l-name span{font-size:10px; color:var(--muted);}
-  .loss-row .l-drop{text-align:right; font-size:12.5px; font-weight:800; color:var(--accent-red);}
-  .loss-row .l-drop span{display:block; font-size:9.5px; font-weight:600; color:var(--muted);}
+  /* Maiores crescimentos do período */
+  .gain-list{display:flex; flex-direction:column; gap:8px;}
+  .gain-row{display:grid; grid-template-columns:32px 1fr auto; gap:12px; align-items:center; padding:11px 14px; background:linear-gradient(90deg, rgba(22,184,122,.08), rgba(22,184,122,.01)); border:1px solid rgba(22,184,122,.22); border-radius:11px; cursor:pointer; transition:box-shadow .15s ease, transform .15s ease;}
+  .gain-row:hover{box-shadow:0 4px 12px rgba(22,184,122,.16); transform:translateX(2px);}
+  .gain-row .g-ico{width:32px; height:32px; border-radius:50%; background:rgba(22,184,122,.16); color:#16B87A; display:flex; align-items:center; justify-content:center; font-size:14px;}
+  .gain-row .g-name b{display:block; font-size:12px; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px;}
+  .gain-row .g-name span{font-size:10px; color:var(--muted);}
+  .gain-row .g-delta{text-align:right; font-size:13px; font-weight:800; color:#16B87A;}
+  .gain-row .g-delta span{display:block; font-size:9.5px; font-weight:600; color:var(--muted);}
   .loss-empty{display:flex; align-items:center; gap:10px; padding:16px; background:rgba(22,184,122,.07); border:1px solid rgba(22,184,122,.25); border-radius:11px; font-size:12.5px; color:#1b7a63; font-weight:600;}
 
   /* Heatmap Gestor × Faixa */
@@ -1313,9 +1313,9 @@
           <div class="prox-list" id="proxList"></div>
         </div>
         <div class="panel">
-          <h2 id="lossTitle">Perderam Elegibilidade</h2>
-          <div class="panel-sub" id="lossSub">Eram elegíveis no período anterior e deixaram de ser — prioridade de contato</div>
-          <div class="loss-list" id="lossList"></div>
+          <h2 id="gainTitle">Maiores Crescimentos do Período</h2>
+          <div class="panel-sub" id="gainSub">Comparado ao período anterior — reconhecimento para reforçar em campo</div>
+          <div class="gain-list" id="gainList"></div>
         </div>
       </div>
 
@@ -3239,8 +3239,11 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     const distantes = rows.filter(r => r.ctx.el !== 1 && r.fx !== 3);
     const prevEleg  = rows.filter(r => r.prev && r.prev.el === 1);
     const prevQuase = rows.filter(r => r.prev && r.prev.el !== 1 && r.prev.meta > 0 && (r.prev.periodTotal / r.prev.meta) >= 0.76 && (r.prev.periodTotal / r.prev.meta) < 1);
-    const lost      = rows.filter(r => r.prev && r.prev.el === 1 && r.ctx.el !== 1)
-                          .sort((a,b) => b.prev.periodTotal - a.prev.periodTotal);
+    // Antes essa lista era "Perderam Elegibilidade" (quem caiu) — trocado por quem mais
+    // cresceu no período: mesma comparação (atual vs. anterior), só que do lado que dá pra
+    // mostrar pra uma corretora sem constranger ninguém (pedido do gestor sênior).
+    const gained    = rows.filter(r => r.prev && (r.ctx.periodTotal - r.prev.periodTotal) > 0)
+                          .sort((a,b) => (b.ctx.periodTotal-b.prev.periodTotal) - (a.ctx.periodTotal-a.prev.periodTotal));
     const pctEl = n ? (eleg.length / n * 100) : 0;
 
     const deltaChip = (cur, prev, invert) => {
@@ -3417,18 +3420,18 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }).join('') : '<div class="loss-empty"><i class=ic-check></i> Nenhuma corretora não-elegível com meta definida neste filtro.</div>';
     document.querySelectorAll('#proxList .prox-row').forEach(el => el.addEventListener('click', ()=>showDetail(el.dataset.c)));
 
-    // ---- Perderam elegibilidade ----
-    document.getElementById('lossSub').innerHTML = `Eram elegíveis em <b>${prevLabel}</b> e não são em <b>${cycleLabel}</b> — prioridade máxima de contato` + recalcSuffix;
-    document.getElementById('lossList').innerHTML = lost.length ? lost.slice(0,8).map(r=>{
-      const drop = r.ctx.periodTotal - r.prev.periodTotal;
-      return `<div class="loss-row" data-c="${r.d.c}">
-        <div class="l-ico"><i class=ic-warn></i></div>
-        <div class="l-name"><b>${r.d.n}</b><span>${shortGestor(r.d.g)} · ${fmt0(r.prev.periodTotal)} → ${fmt0(r.ctx.periodTotal)} vidas</span></div>
-        <div class="l-drop">${drop>0?'+':''}${fmt0(drop)}<span>vidas vs ${prevLabel}</span></div>
+    // ---- Maiores crescimentos do período ----
+    document.getElementById('gainSub').innerHTML = `Comparado a <b>${prevLabel}</b> — reconhecimento para reforçar em campo` + recalcSuffix;
+    document.getElementById('gainList').innerHTML = gained.length ? gained.slice(0,8).map(r=>{
+      const growth = r.ctx.periodTotal - r.prev.periodTotal;
+      return `<div class="gain-row" data-c="${r.d.c}">
+        <div class="g-ico"><i class=ic-trend></i></div>
+        <div class="g-name"><b>${r.d.n}</b><span>${shortGestor(r.d.g)} · ${fmt0(r.prev.periodTotal)} → ${fmt0(r.ctx.periodTotal)} vidas</span></div>
+        <div class="g-delta">+${fmt0(growth)}<span>vidas vs ${prevLabel}</span></div>
       </div>`;
-    }).join('') + (lost.length>8?`<div style="font-size:11px; color:var(--muted); text-align:center; padding-top:4px;">+ ${lost.length-8} corretora(s) — use os filtros para ver todas</div>`:'')
-      : '<div class="loss-empty"><i class=ic-check></i> Nenhuma corretora perdeu elegibilidade na comparação com '+prevLabel+'.</div>';
-    document.querySelectorAll('#lossList .loss-row').forEach(el => el.addEventListener('click', ()=>showDetail(el.dataset.c)));
+    }).join('') + (gained.length>8?`<div style="font-size:11px; color:var(--muted); text-align:center; padding-top:4px;">+ ${gained.length-8} corretora(s) — use os filtros para ver todas</div>`:'')
+      : '<div class="loss-empty"><i class=ic-check></i> Nenhuma corretora com crescimento na comparação com '+prevLabel+'.</div>';
+    document.querySelectorAll('#gainList .gain-row').forEach(el => el.addEventListener('click', ()=>showDetail(el.dataset.c)));
 
     // ---- Evolução trimestral (recalculada) ----
     const lastIdx = MONTH_LABELS.length - 1;
@@ -3456,7 +3459,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     // ---- Insights executivos (consumidos pelo painel de insights existente) ----
     const execInsights = [];
     if (quase.length) execInsights.push({ico:'<i class=ic-trend></i>', text:`<b>${fmt0(quase.length)} corretoras</b> estão entre 76–99% da meta — <b>${fmt0(quaseGap)} vidas</b> separam o time desse salto de elegibilidade.`});
-    if (lost.length) execInsights.push({ico:'<i class=ic-warn></i>', text:`<b>${fmt0(lost.length)} corretoras</b> perderam elegibilidade vs ${prevLabel} — contato imediato tem o maior ROI de retenção.`});
+    if (gained.length) execInsights.push({ico:'<i class=ic-trophy></i>', text:`<b>${fmt0(gained.length)} corretoras</b> aumentaram a produção vs ${prevLabel} — bom momento para reforçar o relacionamento.`});
     if (risco.length) execInsights.push({ico:'<i class=ic-alarm></i>', text:`<b>${fmt0(risco.length)} elegíveis</b> estão sem vendas nos últimos 2 meses — risco de perder o status no próximo ciclo.`});
     if (gestorNames.length > 1){
       const bi = gestorPcts.indexOf(Math.max.apply(null, gestorPcts));
