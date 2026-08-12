@@ -317,6 +317,21 @@
   /* ===== TABLE ===== */
   .table-wrap{overflow-x:auto; border-radius:12px;}
   .table-wrap::-webkit-scrollbar{height:8px;}
+  /* Tabela de Pendências (dentro do modal) — cabeçalho, filtros e total ficam fixos; só a
+     lista de linhas rola, com o cabeçalho da tabela "grudado" no topo enquanto rola, pra
+     nunca perder de vista qual coluna é qual. */
+  .pend-scroll{max-height:340px; overflow-y:auto;}
+  .pend-scroll thead th{position:sticky; top:0; z-index:1;}
+
+  /* Resumo do Dia */
+  .resumo-card{background:#f8faff; border-left:3px solid var(--primary-light); border-radius:11px; padding:14px 16px; transition:box-shadow .15s ease;}
+  .resumo-card:hover{box-shadow:0 4px 12px rgba(16,30,99,.1);}
+  .resumo-card .rc-head{display:flex; align-items:center; gap:10px; margin-bottom:12px;}
+  .resumo-card .rc-avatar{width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;}
+  .resumo-card .rc-name{font-weight:700; color:var(--navy); flex:1; font-size:13px;}
+  .resumo-card .rc-stats{display:flex; gap:24px; flex-wrap:wrap;}
+  .resumo-card .rc-label{font-size:10.5px; color:var(--muted); margin-bottom:2px; font-weight:600;}
+  .resumo-card .rc-value{font-size:19px; font-weight:800;}
   table{width:100%; border-collapse:collapse; font-size:12.5px;}
   thead th{text-align:left; padding:10px 11px; background:#f8fafc; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid var(--line); font-weight:700; white-space:nowrap;}
   thead th[data-k]{cursor:pointer; user-select:none;}
@@ -877,6 +892,7 @@
   </header>
 
 
+  <button id="btnOpenResumo" style="position:fixed; bottom:84px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:#16B87A; color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25);"><i class=ic-clip></i> Resumo do Dia</button>
   <button id="btnOpenImport" style="position:fixed; bottom:20px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:var(--navy); color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25);"><i class=ic-refresh></i> Atualizar Dados</button>
 
   <div id="importModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
@@ -986,20 +1002,49 @@
       </div>
       <div id="pendBeneficiariosTotal" style="margin-top:10px; font-size:13px; color:var(--navy); font-weight:700;"></div>
       <div id="pendPmeSection">
-        <div class="table-wrap" style="margin-top:12px;">
+        <div class="table-wrap pend-scroll" style="margin-top:12px;">
           <table>
-            <thead><tr><th>Proposta</th><th>Corretora</th><th>Status</th><th class="num">Beneficiários</th><th>Recebimento</th><th>Vigência</th></tr></thead>
+            <thead><tr><th>Proposta</th><th>Corretora</th><th>Status</th><th class="num sorted" data-dir="desc" data-k="beneficiarios">Beneficiários</th><th>Recebimento</th><th>Vigência</th></tr></thead>
             <tbody id="pendPmeBody"></tbody>
           </table>
         </div>
       </div>
       <div id="pendPfSection" style="display:none;">
-        <div class="table-wrap" style="margin-top:12px;">
+        <div class="table-wrap pend-scroll" style="margin-top:12px;">
           <table>
-            <thead><tr><th>Orçamento</th><th>Corretora</th><th>Status</th><th class="num">Vidas</th><th>Data Status</th></tr></thead>
+            <thead><tr><th>Orçamento</th><th>Corretora</th><th>Status</th><th class="num sorted" data-dir="desc" data-k="vidas">Vidas</th><th>Data Status</th></tr></thead>
             <tbody id="pendPfBody"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="resumoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
+    <div id="resumoModal" style="background:#fff; border-radius:16px; padding:24px 26px; max-width:680px; width:100%; max-height:85vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div>
+          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-weight:700;">Cauda Longa · NDI SP</div>
+          <h2 style="font-size:17px; color:var(--navy); margin:2px 0 0;">Resumo do dia</h2>
+        </div>
+        <button id="btnCloseResumo" class="btn-reset">Fechar ✕</button>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:flex-end;">
+        <div class="f-group" style="flex:1; min-width:200px;">
+          <label>Gestor</label>
+          <select id="resumoGestorSel" class="ic-left ic-user"><option value="">Todos os gestores</option></select>
+        </div>
+        <div class="subtabs">
+          <button class="subtab-btn active" id="resumoTabPme">PME / SS</button>
+          <button class="subtab-btn" id="resumoTabPf">PF</button>
+        </div>
+      </div>
+      <div id="resumoPmeView" style="margin-top:16px;">
+        <div id="resumoCards" style="display:flex; flex-direction:column; gap:10px;"></div>
+        <button id="btnCopyResumo" class="btn-reset" style="margin-top:14px; width:100%; background:var(--navy); color:#fff; border-color:var(--navy);"><i class=ic-clip></i> Copiar texto</button>
+      </div>
+      <div id="resumoPfView" style="display:none; margin-top:16px;">
+        <div class="table-wrap"><table id="resumoPfTable"></table></div>
       </div>
     </div>
   </div>
@@ -2231,6 +2276,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let pendCurrentGestor = null;
   let pendActiveTab = 'pme';
   let pendSelectedStatuses = new Set();
+  // Ordena por Beneficiários (PME) / Vidas (PF) — maior pro menor por padrão, clique no
+  // cabeçalho inverte. Sem isso a lista vinha na ordem que chegou do arquivo, então um
+  // contrato pequeno podia aparecer no meio de vários grandes sem nenhum padrão visível.
+  let pendSortDir = -1;
   const pendMonthOf = dateStr => dateStr ? dateStr.slice(0,7) : null;
 
   function renderPendencias(){
@@ -2280,8 +2329,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     // pros dois: cada aba já sabe qual número procurar (dataVigencia/dataStatus segue o mesmo padrão).
     const searchRaw = document.getElementById('pendPropostaSearch').value.trim().toLowerCase();
 
-    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.proposta||'').toLowerCase().indexOf(searchRaw) >= 0));
-    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.orcamento||'').toLowerCase().indexOf(searchRaw) >= 0));
+    const pmeFiltered = pme.filter(p => (!activeMonth || pendMonthOf(p.dataVigencia) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pme' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.proposta||'').toLowerCase().indexOf(searchRaw) >= 0))
+      .sort((a,b) => pendSortDir * ((a.beneficiarios||0) - (b.beneficiarios||0)));
+    const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.orcamento||'').toLowerCase().indexOf(searchRaw) >= 0))
+      .sort((a,b) => pendSortDir * ((a.vidas||0) - (b.vidas||0)));
 
     document.getElementById('pendCountPme').textContent = pmeFiltered.reduce((s,p)=>s+(p.beneficiarios||0),0);
     document.getElementById('pendCountPf').textContent = pfFiltered.reduce((s,p)=>s+(p.vidas||0),0);
@@ -2321,6 +2372,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('pendMonthFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendCorretoraFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendPropostaSearch').addEventListener('input', renderPendencias);
+  document.querySelectorAll('#pendModal thead th[data-k]').forEach(th => {
+    th.addEventListener('click', () => {
+      pendSortDir *= -1;
+      document.querySelectorAll('#pendModal thead th[data-k]').forEach(h => h.setAttribute('data-dir', pendSortDir>0?'asc':'desc'));
+      renderPendencias();
+    });
+  });
   document.getElementById('pendTabPme').addEventListener('click', () => {
     pendActiveTab = 'pme';
     document.getElementById('pendTabPme').classList.add('active'); document.getElementById('pendTabPf').classList.remove('active');
@@ -2340,6 +2398,126 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('pendPropostaSearch').value = '';
     pendSelectedStatuses.clear();
     renderPendencias();
+  });
+
+  /* ---- Resumo do Dia ---- */
+  const RESUMO_GESTORES = ['Agatha Sakamoto','Patricia Monks','Jonathan Leal','Pablo Amora'];
+  let resumoActiveTab = 'pme';
+
+  function initialsOf(nome){
+    const partes = nome.trim().split(/\s+/);
+    return ((partes[0]||'')[0] + (partes[1]||'')[0]).toUpperCase();
+  }
+
+  // Soma beneficiários por status.planium ('analise'/'pendencia') — mesma lógica binária
+  // já usada na tabela de Pendências PME, só agregada por gestor em vez de listada linha a linha.
+  function resumoPmeStats(gestorNome){
+    const rows = PENDENCIAS_PME[gestorNome] || [];
+    let analise = 0, pendencia = 0;
+    rows.forEach(p => {
+      const v = p.beneficiarios || 0;
+      if (p.status && p.status.planium === 'analise') analise += v;
+      else if (p.status && p.status.planium === 'pendencia') pendencia += v;
+    });
+    return { funil: analise + pendencia, analise, pendencia };
+  }
+
+  function renderResumoPme(gestorFiltro){
+    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+    document.getElementById('resumoCards').innerHTML = gestores.map(g => {
+      const s = resumoPmeStats(g);
+      return `<div class="resumo-card">
+        <div class="rc-head"><div class="rc-avatar">${initialsOf(g)}</div><div class="rc-name">${g}</div></div>
+        <div class="rc-stats">
+          <div class="rc-stat"><div class="rc-label">Em Funil</div><div class="rc-value" style="color:var(--navy);">${s.funil}</div></div>
+          <div class="rc-stat"><div class="rc-label">Em Análise</div><div class="rc-value" style="color:var(--primary-light);">${s.analise}</div></div>
+          <div class="rc-stat"><div class="rc-label">Em Pendência</div><div class="rc-value" style="color:#FFB81C;">${s.pendencia}</div></div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderResumoPf(gestorFiltro){
+    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+    const statusSet = new Set();
+    gestores.forEach(g => (PENDENCIAS_PF[g]||[]).forEach(p => { if (p.status) statusSet.add(p.status); }));
+    const statuses = [...statusSet].sort();
+    const thead = `<thead><tr><th>Gestor</th>${statuses.map(s=>`<th class="num">${s}</th>`).join('')}<th class="num">Total</th></tr></thead>`;
+    const tbody = gestores.map(g => {
+      const rows = PENDENCIAS_PF[g] || [];
+      const porStatus = statuses.map(s => rows.filter(p=>p.status===s).reduce((sum,p)=>sum+(p.vidas||0),0));
+      const total = porStatus.reduce((a,b)=>a+b,0);
+      return `<tr><td class="name">${g}</td>${porStatus.map(v=>`<td class="num">${v||''}</td>`).join('')}<td class="num" style="font-weight:700;">${total}</td></tr>`;
+    }).join('');
+    document.getElementById('resumoPfTable').innerHTML = thead + '<tbody>' + tbody + '</tbody>';
+  }
+
+  function renderResumo(){
+    const gestorFiltro = document.getElementById('resumoGestorSel').value;
+    if (resumoActiveTab === 'pme') renderResumoPme(gestorFiltro); else renderResumoPf(gestorFiltro);
+  }
+
+  window.showResumoModal = function(){
+    const sel = document.getElementById('resumoGestorSel');
+    if (sel.options.length <= 1) {
+      sel.innerHTML = '<option value="">Todos os gestores</option>' + RESUMO_GESTORES.map(g=>`<option value="${g}">${g}</option>`).join('');
+    }
+    resumoActiveTab = 'pme';
+    document.getElementById('resumoTabPme').classList.add('active');
+    document.getElementById('resumoTabPf').classList.remove('active');
+    document.getElementById('resumoPmeView').style.display = '';
+    document.getElementById('resumoPfView').style.display = 'none';
+    renderResumo();
+    document.getElementById('resumoModalOverlay').style.display = 'flex';
+  };
+  document.getElementById('btnOpenResumo').addEventListener('click', window.showResumoModal);
+  document.getElementById('btnCloseResumo').addEventListener('click', () => { document.getElementById('resumoModalOverlay').style.display = 'none'; });
+  document.getElementById('resumoModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'resumoModalOverlay') document.getElementById('resumoModalOverlay').style.display = 'none'; });
+  document.getElementById('resumoGestorSel').addEventListener('change', renderResumo);
+  document.getElementById('resumoTabPme').addEventListener('click', () => {
+    resumoActiveTab = 'pme';
+    document.getElementById('resumoTabPme').classList.add('active'); document.getElementById('resumoTabPf').classList.remove('active');
+    document.getElementById('resumoPmeView').style.display = ''; document.getElementById('resumoPfView').style.display = 'none';
+    renderResumo();
+  });
+  document.getElementById('resumoTabPf').addEventListener('click', () => {
+    resumoActiveTab = 'pf';
+    document.getElementById('resumoTabPf').classList.add('active'); document.getElementById('resumoTabPme').classList.remove('active');
+    document.getElementById('resumoPfView').style.display = ''; document.getElementById('resumoPmeView').style.display = 'none';
+    renderResumo();
+  });
+  document.getElementById('btnCopyResumo').addEventListener('click', () => {
+    const gestorFiltro = document.getElementById('resumoGestorSel').value;
+    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+    const texto = gestores.map(g => {
+      const s = resumoPmeStats(g);
+      const primeiroNome = g.split(' ')[0].toUpperCase();
+      return `${primeiroNome} · ${s.funil} VIDAS EM FUNIL · ${s.analise} VIDAS EM ANALISE · ${s.pendencia} VIDAS EM PENDENCIA`;
+    }).join('\n');
+    const btn = document.getElementById('btnCopyResumo');
+    const original = btn.innerHTML;
+    const marcarCopiado = () => { btn.innerHTML = '<i class=ic-check></i> Copiado!'; setTimeout(() => { btn.innerHTML = original; }, 1800); };
+    const marcarFalha = () => { btn.innerHTML = 'Não copiou — selecione manualmente'; setTimeout(() => { btn.innerHTML = original; }, 2600); };
+    // Fallback pra quando a Clipboard API é recusada (aba sem foco, permissão negada,
+    // navegador mais antigo): textarea temporário + execCommand('copy'), sem depender de
+    // diálogo (window.prompt pode vir bloqueado em alguns contextos).
+    const copyViaTextarea = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = texto;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) marcarCopiado(); else marcarFalha();
+      } catch (e) { marcarFalha(); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(marcarCopiado).catch(copyViaTextarea);
+    } else {
+      copyViaTextarea();
+    }
   });
 })();
 </script>
@@ -3966,11 +4144,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
 
   document.getElementById('detailClose').addEventListener('click', ()=>{ document.getElementById('detailPanel').classList.remove('show'); });
 
-  document.querySelectorAll('thead th[data-k]').forEach(th=>{
+  // Escopado a #baseCorretorasWrap: o seletor 'thead th[data-k]' sem escopo também batia nos
+  // cabeçalhos ordenáveis do modal de Pendências (mesmo padrão data-k reaproveitado ali), fazendo
+  // os dois handlers dispararem no mesmo clique e brigarem pelo atributo data-dir.
+  document.querySelectorAll('#baseCorretorasWrap thead th[data-k]').forEach(th=>{
     th.addEventListener('click', ()=>{
       const k = th.dataset.k;
       if (sortKey===k){ sortDir *= -1; } else { sortKey=k; sortDir = (k==='n'||k==='g'||k==='rk'||k==='el') ? 1 : -1; }
-      document.querySelectorAll('thead th[data-k]').forEach(h=>{ h.classList.remove('sorted'); h.removeAttribute('data-dir'); });
+      document.querySelectorAll('#baseCorretorasWrap thead th[data-k]').forEach(h=>{ h.classList.remove('sorted'); h.removeAttribute('data-dir'); });
       th.classList.add('sorted');
       th.setAttribute('data-dir', sortDir > 0 ? 'asc' : 'desc');
       page = 1;
