@@ -1032,16 +1032,20 @@
   </div>
 
   <div id="resumoModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
-    <div id="resumoModal" style="background:#fff; border-radius:16px; padding:24px 26px; max-width:680px; width:100%; max-height:85vh; overflow-y:auto;">
+    <div id="resumoModal" style="background:#fff; border-radius:16px; padding:24px 26px; max-width:760px; width:100%; max-height:85vh; overflow-y:auto;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
         <div>
-          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-weight:700;">Cauda Longa · NDI SP</div>
+          <div style="font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; font-weight:700;">Hapvida NotreDame Intermédica · NDI SP</div>
           <h2 style="font-size:17px; color:var(--navy); margin:2px 0 0;">Resumo do dia</h2>
         </div>
         <button id="btnCloseResumo" class="btn-reset">Fechar ✕</button>
       </div>
       <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:flex-end;">
-        <div class="f-group" style="flex:1; min-width:200px;">
+        <div class="f-group" style="flex:1; min-width:180px;">
+          <label>Equipe</label>
+          <select id="resumoEquipeSel" class="ic-left ic-users"><option value="">Todas as equipes</option></select>
+        </div>
+        <div class="f-group" style="flex:1; min-width:180px;">
           <label>Gestor</label>
           <select id="resumoGestorSel" class="ic-left ic-user"><option value="">Todos os gestores</option></select>
         </div>
@@ -1311,11 +1315,20 @@
           <option value="semestre">Semestre</option>
           <option value="trimestre">Trimestre</option>
           <option value="mensal">Mensal</option>
+          <option value="custom">Personalizado (intervalo)</option>
         </select>
       </div>
-      <div class="f-group">
+      <div class="f-group" id="fPeriodValueGroup">
         <label>Período</label>
         <select id="fPeriodValue" class="ic-left ic-clock"></select>
+      </div>
+      <div class="f-group" id="fCustomFromGroup" style="display:none;">
+        <label>De</label>
+        <select id="fCustomFrom" class="ic-left ic-clock"></select>
+      </div>
+      <div class="f-group" id="fCustomToGroup" style="display:none;">
+        <label>Até</label>
+        <select id="fCustomTo" class="ic-left ic-clock"></select>
       </div>
       <div class="f-toggle"><input type="checkbox" id="fReact"><label for="fReact">Apenas oportunidades de reativação</label></div>
       <div class="view-switch" id="elViewSwitch">
@@ -2440,12 +2453,34 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   });
 
   /* ---- Resumo do Dia ---- */
-  const RESUMO_GESTORES = ['Agatha Sakamoto','Patricia Monks','Jonathan Leal','Pablo Amora'];
+  // Todos os gestores que aparecem nas Pendências PME/PF (não só Cauda Longa) — deriva direto
+  // dos dados em vez de lista fixa, então acompanha sozinho se algum gestor entrar/sair.
+  const RESUMO_GESTORES = [...new Set([...Object.keys(PENDENCIAS_PME), ...Object.keys(PENDENCIAS_PF)])].sort();
+  // Mapa gestor → equipe, mesmo critério já usado em outras partes do painel (Conquista
+  // Premiada). Fica duplicado aqui (em vez de compartilhado) porque vive num <script> isolado —
+  // mesmo padrão já usado antes nesta base de código pra esse tipo de mapa pequeno e estável.
+  const RESUMO_GESTOR_EQUIPE = {
+    'Agatha Sakamoto':'CAUDA LONGA', 'Patricia Monks':'CAUDA LONGA', 'Jonathan Leal':'CAUDA LONGA', 'Pablo Amora':'CAUDA LONGA',
+    'Erika de Sousa Silva':'PLATAFORMA SP', 'Camila Alves Pertinhez':'PLATAFORMA SP', 'Lais dos Santos Martins':'PLATAFORMA SP', 'Wilder Coca Patzi':'PLATAFORMA SP',
+    'Karollainny Rangel de Sousa Lopes':'DIGITAL', 'Daniela Novais dos Santos':'DIGITAL', 'Amanda dos Santos Sobral':'DIGITAL', 'Maxuel Pimentel Nobrega':'DIGITAL',
+    'Vivian de Cassia Ambrosio':'PLATAFORMA ABC/ALTO TIETÊ/BX', 'Guilherme de Lima Musachi':'PLATAFORMA ABC/ALTO TIETÊ/BX', 'Izabele de Oliveira da Silva':'PLATAFORMA ABC/ALTO TIETÊ/BX',
+    'Kaique Araujo da Silva':'INTERIOR SP', 'Daniela Frederico Martins (Campinas)':'INTERIOR SP', 'Daniela Frederico Martins (AM)':'INTERIOR SP', 'Flavia Auana Silva de Oliveira':'INTERIOR SP',
+  };
+  const resumoEquipeOf = g => RESUMO_GESTOR_EQUIPE[g] || 'Outras equipes';
+  const RESUMO_EQUIPES = [...new Set(RESUMO_GESTORES.map(resumoEquipeOf))].sort();
   let resumoActiveTab = 'pme';
 
   function initialsOf(nome){
     const partes = nome.trim().split(/\s+/);
     return ((partes[0]||'')[0] + (partes[1]||'')[0]).toUpperCase();
+  }
+
+  // Lista efetiva de gestores a mostrar, cruzando os dois filtros (equipe + gestor específico).
+  function resumoGestoresFiltrados(){
+    const gestorSel = document.getElementById('resumoGestorSel').value;
+    if (gestorSel) return [gestorSel];
+    const equipeSel = document.getElementById('resumoEquipeSel').value;
+    return equipeSel ? RESUMO_GESTORES.filter(g => resumoEquipeOf(g) === equipeSel) : RESUMO_GESTORES;
   }
 
   // Soma beneficiários por status.planium ('analise'/'pendencia') — mesma lógica binária
@@ -2461,8 +2496,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     return { funil: analise + pendencia, analise, pendencia };
   }
 
-  function renderResumoPme(gestorFiltro){
-    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+  function renderResumoPme(gestores){
     document.getElementById('resumoCards').innerHTML = gestores.map(g => {
       const s = resumoPmeStats(g);
       return `<div class="resumo-card" style="cursor:pointer" onclick="window.__openResumoDetail('${g.replace(/'/g,"\\'")}','pme')" title="Ver detalhes de ${g}">
@@ -2476,8 +2510,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }).join('');
   }
 
-  function renderResumoPf(gestorFiltro){
-    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+  function renderResumoPf(gestores){
     const statusSet = new Set();
     gestores.forEach(g => (PENDENCIAS_PF[g]||[]).forEach(p => { if (p.status) statusSet.add(p.status); }));
     const statuses = [...statusSet].sort();
@@ -2492,8 +2525,8 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   }
 
   function renderResumo(){
-    const gestorFiltro = document.getElementById('resumoGestorSel').value;
-    if (resumoActiveTab === 'pme') renderResumoPme(gestorFiltro); else renderResumoPf(gestorFiltro);
+    const gestores = resumoGestoresFiltrados();
+    if (resumoActiveTab === 'pme') renderResumoPme(gestores); else renderResumoPf(gestores);
   }
 
   // Clique num card/linha do Resumo do Dia leva pro popup detalhado que já existe no Desempenho
@@ -2506,11 +2539,24 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (tab === 'pf') document.getElementById('pendTabPf').click();
   };
 
+  // Repopula o select de Gestor de acordo com a equipe escolhida — só os gestores daquela
+  // equipe (ou todos, se "Todas as equipes"). Preserva a seleção de gestor se ela ainda for
+  // válida dentro da nova equipe; senão volta pra "Todos os gestores".
+  function resumoAtualizarGestorSel(){
+    const equipeSel = document.getElementById('resumoEquipeSel').value;
+    const gestorSelEl = document.getElementById('resumoGestorSel');
+    const prevGestor = gestorSelEl.value;
+    const opcoes = equipeSel ? RESUMO_GESTORES.filter(g => resumoEquipeOf(g) === equipeSel) : RESUMO_GESTORES;
+    gestorSelEl.innerHTML = '<option value="">Todos os gestores</option>' + opcoes.map(g=>`<option value="${g}">${g}</option>`).join('');
+    gestorSelEl.value = opcoes.includes(prevGestor) ? prevGestor : '';
+  }
+
   window.showResumoModal = function(){
-    const sel = document.getElementById('resumoGestorSel');
-    if (sel.options.length <= 1) {
-      sel.innerHTML = '<option value="">Todos os gestores</option>' + RESUMO_GESTORES.map(g=>`<option value="${g}">${g}</option>`).join('');
+    const equipeSelEl = document.getElementById('resumoEquipeSel');
+    if (equipeSelEl.options.length <= 1) {
+      equipeSelEl.innerHTML = '<option value="">Todas as equipes</option>' + RESUMO_EQUIPES.map(eq=>`<option value="${eq}">${eq}</option>`).join('');
     }
+    resumoAtualizarGestorSel();
     resumoActiveTab = 'pme';
     document.getElementById('resumoTabPme').classList.add('active');
     document.getElementById('resumoTabPf').classList.remove('active');
@@ -2522,6 +2568,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('btnOpenResumo').addEventListener('click', window.showResumoModal);
   document.getElementById('btnCloseResumo').addEventListener('click', () => { document.getElementById('resumoModalOverlay').style.display = 'none'; });
   document.getElementById('resumoModalOverlay').addEventListener('click', (e) => { if (e.target.id === 'resumoModalOverlay') document.getElementById('resumoModalOverlay').style.display = 'none'; });
+  document.getElementById('resumoEquipeSel').addEventListener('change', () => { resumoAtualizarGestorSel(); renderResumo(); });
   document.getElementById('resumoGestorSel').addEventListener('change', renderResumo);
   document.getElementById('resumoTabPme').addEventListener('click', () => {
     resumoActiveTab = 'pme';
@@ -2536,8 +2583,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     renderResumo();
   });
   document.getElementById('btnCopyResumo').addEventListener('click', () => {
-    const gestorFiltro = document.getElementById('resumoGestorSel').value;
-    const gestores = gestorFiltro ? [gestorFiltro] : RESUMO_GESTORES;
+    const gestores = resumoGestoresFiltrados();
     const texto = gestores.map(g => {
       const s = resumoPmeStats(g);
       const primeiroNome = g.split(' ')[0].toUpperCase();
@@ -2663,10 +2709,33 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     PERIOD_DEFS.trimestre = buildTrimestreBuckets();
     PERIOD_DEFS.mensal = MONTH_LABELS.map((label,i) => ({label, months:[i]}));
   }
+  // Intervalo personalizado (De/Até) — monta uma entrada sintética PERIOD_DEFS.custom[0] com
+  // os meses do intervalo escolhido, pra reaproveitar 100% do código que já existe (rótulos,
+  // meta, gap etc. em todo canto já leem PERIOD_DEFS[tipo][índice] sem saber se é um período
+  // fixo ou personalizado).
+  function rebuildCustomPeriod(){
+    const fromIdx = Number(document.getElementById('fCustomFrom').value);
+    const toIdx = Number(document.getElementById('fCustomTo').value);
+    const lo = Math.min(fromIdx, toIdx), hi = Math.max(fromIdx, toIdx);
+    const months = Array.from({length: hi - lo + 1}, (_, i) => lo + i);
+    const label = `${MONTH_LABELS[lo]} – ${MONTH_LABELS[hi]}`;
+    PERIOD_DEFS.custom = [{ label, months }];
+    const valSel = document.getElementById('fPeriodValue');
+    valSel.innerHTML = `<option value="0">${label}</option>`;
+    valSel.value = '0';
+  }
   function populatePeriodValue(defaultToLast){
     const typeSel = document.getElementById('fPeriodType');
     const valSel = document.getElementById('fPeriodValue');
     const type = typeSel.value;
+    document.getElementById('fPeriodValueGroup').style.display = type === 'custom' ? 'none' : '';
+    document.getElementById('fCustomFromGroup').style.display = type === 'custom' ? '' : 'none';
+    document.getElementById('fCustomToGroup').style.display = type === 'custom' ? '' : 'none';
+    if (type === 'custom'){
+      valSel.disabled = false;
+      rebuildCustomPeriod();
+      return;
+    }
     if (type === 'all'){
       valSel.innerHTML = '<option value="">—</option>';
       valSel.disabled = true;
@@ -2682,7 +2751,11 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (type === 'all') return null;
     const idx = Number(document.getElementById('fPeriodValue').value);
     const opt = PERIOD_DEFS[type][idx];
-    return opt ? opt.months : null;
+    if (!opt) return null;
+    // Marca o array como "literal" só quando vem do intervalo Personalizado — ver o porquê
+    // no comentário dentro de computePeriodElegRank.
+    opt.months.__literal = (type === 'custom');
+    return opt.months;
   }
   // ===== CORTE DE ERA REGULATÓRIA =====
   // A partir de Julho/26 (índice 18 = início do 3TRI26): régua nova ×0,80
@@ -2716,7 +2789,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     return prev;
   }
   function computePeriodElegRank(d, selectedMonths){
-    const isCurrentPeriod = Math.max.apply(null, selectedMonths) === d.m.length - 1;
+    // selectedMonths.__literal (marcado por getPeriodMonths() só pro intervalo Personalizado)
+    // pede o intervalo EXATO que o usuário escolheu, sem substituir pelo cálculo oficial de
+    // trimestre — diferente de Mensal/Trimestre/Semestre/Ano, onde selecionar "o período atual"
+    // é ambíguo e cai na régua oficial por definição. Sem essa distinção, um intervalo
+    // personalizado que termina no mês mais recente (o caso mais comum, "de X até agora") era
+    // silenciosamente trocado pelos números do trimestre vigente, ignorando o que foi escolhido.
+    const isCurrentPeriod = !selectedMonths.__literal && Math.max.apply(null, selectedMonths) === d.m.length - 1;
     if (isCurrentPeriod){
       // A elegibilidade "oficial" é sempre calculada por TRIMESTRE — o trimestre vigente
       // (mesmo parcial, se ainda não fechou) contra o trimestre ANTERIOR completo — nunca por
@@ -4407,10 +4486,21 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   function updateConquistaAvailability(){
     document.getElementById('btnOpenConquista').style.display = getConquistaPeriod() ? '' : 'none';
   }
+  // Selects "De"/"Até" do intervalo personalizado — populados uma vez com todos os meses
+  // conhecidos. Padrão: últimos 12 meses (ajustável), só pra começar com algo razoável.
+  (function initCustomRangeSelects(){
+    const opts = MONTH_LABELS.map((label,i) => `<option value="${i}">${label}</option>`).join('');
+    document.getElementById('fCustomFrom').innerHTML = opts;
+    document.getElementById('fCustomTo').innerHTML = opts;
+    document.getElementById('fCustomFrom').value = String(Math.max(0, MONTH_LABELS.length - 12));
+    document.getElementById('fCustomTo').value = String(MONTH_LABELS.length - 1);
+  })();
   populatePeriodValue(true);
   updateConquistaAvailability();
   document.getElementById('fPeriodType').addEventListener('change', ()=>{ populatePeriodValue(true); renderActive(); updateConquistaAvailability(); });
   document.getElementById('fPeriodValue').addEventListener('change', ()=>{ renderActive(); updateConquistaAvailability(); });
+  document.getElementById('fCustomFrom').addEventListener('change', ()=>{ rebuildCustomPeriod(); renderActive(); updateConquistaAvailability(); });
+  document.getElementById('fCustomTo').addEventListener('change', ()=>{ rebuildCustomPeriod(); renderActive(); updateConquistaAvailability(); });
 
   // ===================== RANKING DE VENDAS =====================
   const rkFmt = n => Math.round(n).toLocaleString('pt-BR');
