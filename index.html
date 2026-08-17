@@ -770,6 +770,27 @@
   [data-theme="dark"] .subtab-btn.active{ background:linear-gradient(120deg,var(--primary-mid),var(--primary-light)) !important; color:#fff !important; border-color:var(--primary-mid) !important; }
   [data-theme="dark"] ::-webkit-scrollbar-thumb{ background:#3A4266; }
   [data-theme="dark"] .sidebar{ background:linear-gradient(180deg,#080C1C 0%, #0E1745 52%, #17245E 145%); }
+  /* --navy/--primary-dark virou claro pra funcionar como cor de TEXTO (títulos, valores) — mas
+     várias coisas usam essa MESMA variável como FUNDO de botão/cabeçalho, e essas ficaram
+     "lavadas"/pastel com a cor clara. Aqui devolve um azul-marinho escuro só nesses fundos
+     específicos, sem afetar os textos que já ficaram legíveis. */
+  [data-theme="dark"] header{ background:linear-gradient(125deg, #101B4D 0%, #24337A 65%, #3A50A8 130%) !important; }
+  [data-theme="dark"] .view-tab-btn.active{ background:#26346F !important; }
+  [data-theme="dark"] .btn-reset:hover{ background:#33489E !important; border-color:#33489E !important; }
+  [data-theme="dark"] .resumo-card .rc-avatar,
+  [data-theme="dark"] .vs-center,
+  [data-theme="dark"] #btnProcessImport,
+  [data-theme="dark"] #btnPublishGithub,
+  [data-theme="dark"] #btnCopyResumo,
+  [data-theme="dark"] #mjExpandAllBtn,
+  [data-theme="dark"] #rkmPdfBtn,
+  [data-theme="dark"] #cqBadge{
+    background:#26346F !important; border-color:#26346F !important;
+  }
+  [data-theme="dark"] #mjCatModalIcon{ background:linear-gradient(135deg, #1B2A6B, #33489E) !important; }
+  [data-theme="dark"] #viewMj .panel[style*="var(--navy)"]{
+    background:linear-gradient(120deg, #1B2A6B 0%, #33489E 100%) !important;
+  }
   /* Sobrescreve o gradiente claro fixo de body{} (linha ~450) — sem isso o fundo da página
      ficava sempre claro, mesmo com --bg-main trocado, porque um "background" com gradiente
      define a imagem de fundo direto, não lê var(--bg). */
