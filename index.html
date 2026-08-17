@@ -5038,22 +5038,35 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       btn.disabled = semStatus || !lista.length;
       btn.style.opacity = btn.disabled ? '.5' : '';
       btn.style.cursor = btn.disabled ? 'default' : 'pointer';
+      // "0 proposta(s)" sozinho não deixava claro POR QUE (geralmente é o filtro de mês ainda
+      // ativo, sobrando de uma seleção anterior, escondendo pendências que existem só em outro
+      // mês) — sem essa dica, o botão só ficava desabilitado sem explicação visível.
       info.innerHTML = semStatus
         ? '<span style="color:var(--accent-coral);">Selecione ao menos um status.</span>'
-        : `<b>${lista.length}</b> proposta(s) · <b>${rkFmt(vidas)}</b> vida(s)${mv?' com vigência em '+mesLabel(mv):''}${nSt<totSt?' · filtrado por status':''}.`;
+        : (!lista.length && mv
+            ? `<span style="color:var(--accent-coral);">Nenhuma proposta com esse status em ${mesLabel(mv)}. <a href="#" id="rkmVerTodosMeses" style="color:var(--primary-light); text-decoration:underline;">Ver todos os meses</a></span>`
+            : `<b>${lista.length}</b> proposta(s) · <b>${rkFmt(vidas)}</b> vida(s)${mv?' com vigência em '+mesLabel(mv):''}${nSt<totSt?' · filtrado por status':''}.`);
+      const verTodos = document.getElementById('rkmVerTodosMeses');
+      if (verTodos) verTodos.onclick = (e) => { e.preventDefault(); sel.value = ''; atualiza(); };
     };
     sel.onchange = atualiza;
     box.querySelectorAll('input').forEach(i => i.addEventListener('change', atualiza));
     document.getElementById('rkmStPend').onclick = (e) => {
       e.preventDefault();
+      if (!box.querySelectorAll('input').length) return; // sem propostas pra essa corretora, nada a filtrar
       box.querySelectorAll('input').forEach(i => {
         const cfg = RKM_STATUS.find(x=>x.k===i.value);
         i.checked = !!(cfg && cfg.acao);
       });
+      // "Só pendências" quer mostrar TUDO que precisa de ação, não só o que caiu no mês que
+      // por acaso estava selecionado — sem isso, uma corretora com pendências só em outro mês
+      // ficava com filtro zerado e o botão de baixar desabilitado sem nenhuma pendência visível.
+      sel.value = '';
       atualiza();
     };
     document.getElementById('rkmStAll').onclick = (e) => {
       e.preventDefault();
+      if (!box.querySelectorAll('input').length) return;
       box.querySelectorAll('input').forEach(i => i.checked = true);
       atualiza();
     };
