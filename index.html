@@ -740,12 +740,26 @@
        sistema) já nascerem no esquema escuro sozinhos — sem isso a listinha que abre ao clicar
        num filtro continuava branca, porque isso é desenhado pelo navegador/SO, não pelo CSS normal. */
     color-scheme: dark;
+    /* Ícones dentro dos campos de filtro (seta do select + ícone da esquerda) são SVGs com a
+       cor pintada direto no desenho (stroke='%232E52D4'), não um ícone de fonte — por isso não
+       seguem currentColor/var() sozinhos. Redefine as mesmas 7 variáveis com um azul bem mais
+       claro, só pro modo escuro. */
+    --ic-f-chevron:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    --ic-f-building:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='2' width='16' height='20' rx='2'/><path d='M9 22v-4h6v4'/><path d='M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01'/></svg>");
+    --ic-f-user:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/><circle cx='12' cy='7' r='4'/></svg>");
+    --ic-f-check:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/><polyline points='22 4 12 14.01 9 11.01'/></svg>");
+    --ic-f-trophy:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9H4.5a2.5 2.5 0 0 1 0-5H6'/><path d='M18 9h1.5a2.5 2.5 0 0 0 0-5H18'/><path d='M4 22h16'/><path d='M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22'/><path d='M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22'/><path d='M18 2H6v7a6 6 0 0 0 12 0V2Z'/></svg>");
+    --ic-f-clock:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><polyline points='12 6 12 12 16 14'/></svg>");
+    --ic-f-award:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FA6F5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='8' r='6'/><path d='M15.477 12.89 17 22l-5-3-5 3 1.523-9.11'/></svg>");
   }
   [data-theme="dark"] thead th{background:#1E2540 !important; color:var(--muted) !important;}
   [data-theme="dark"] .f-group select, [data-theme="dark"] .f-group input[type=text]{
-    background:var(--card) !important; color:var(--text) !important; border-color:var(--line) !important;
+    /* background-color (não "background" puro) — o atalho "background" reseta background-image
+       junto, e é assim que os ícones dentro do campo (seta do select + ícone da esquerda) são
+       desenhados. Usar o atalho aqui apagava os dois sem querer. */
+    background-color:var(--card) !important; color:var(--text) !important; border-color:var(--line) !important;
   }
-  [data-theme="dark"] .f-group select:focus, [data-theme="dark"] .f-group input[type=text]:focus{ background:var(--card) !important; }
+  [data-theme="dark"] .f-group select:focus, [data-theme="dark"] .f-group input[type=text]:focus{ background-color:var(--card) !important; }
   [data-theme="dark"] .btn-reset{ background:var(--card); color:var(--text); border-color:var(--line); }
   [data-theme="dark"] .pagination button{ background:var(--card) !important; color:var(--text); border-color:var(--line); }
   [data-theme="dark"] #importModal, [data-theme="dark"] #pendModal, [data-theme="dark"] #resumoModal,
