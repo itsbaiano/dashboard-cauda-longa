@@ -727,10 +727,19 @@
      pra pegar os pedaços que têm cor fixa no style="" (não dá pra alcançar com var()) — modais,
      cabeçalho de tabela, cards que criei com fundo claro fixo etc. */
   :root[data-theme="dark"]{
-    --primary-dark:#1B2A6B; --primary-mid:#33489E; --primary-light:#6C87E8;
+    /* --primary-dark (alias --navy) é usado em CENTENAS de lugares como cor de TEXTO (títulos,
+       valores, nomes) — não só fundo. Mantê-lo escuro no modo escuro deixava esse texto quase
+       invisível (navy escuro sobre card escuro = sem contraste, "títulos sumindo"). Por isso ele
+       clareia bastante aqui — os poucos lugares que usam --navy como FUNDO de botão (ex.: "Atualizar
+       Dados") só ficam com um azul mais vivo, o que também funciona bem visualmente. */
+    --primary-dark:#8FA6F5; --primary-mid:#33489E; --primary-light:#6C87E8;
     --accent-gold:#FFC94D; --accent-coral:#FF9457; --accent-mint:#2FDB98; --accent-red:#FF6B7F;
     --bg-main:#0E1220; --bg-card:#171C30; --border-light:#2B3350;
     --text-primary:#E7EAF6; --text-secondary:#A6ADD1; --text-muted:#7A82AA;
+    /* Faz os controles NATIVOS do navegador (lista aberta de <select>, checkbox, scrollbar do
+       sistema) já nascerem no esquema escuro sozinhos — sem isso a listinha que abre ao clicar
+       num filtro continuava branca, porque isso é desenhado pelo navegador/SO, não pelo CSS normal. */
+    color-scheme: dark;
   }
   [data-theme="dark"] thead th{background:#1E2540 !important; color:var(--muted) !important;}
   [data-theme="dark"] .f-group select, [data-theme="dark"] .f-group input[type=text]{
@@ -738,6 +747,7 @@
   }
   [data-theme="dark"] .f-group select:focus, [data-theme="dark"] .f-group input[type=text]:focus{ background:var(--card) !important; }
   [data-theme="dark"] .btn-reset{ background:var(--card); color:var(--text); border-color:var(--line); }
+  [data-theme="dark"] .pagination button{ background:var(--card) !important; color:var(--text); border-color:var(--line); }
   [data-theme="dark"] #importModal, [data-theme="dark"] #pendModal, [data-theme="dark"] #resumoModal,
   [data-theme="dark"] #mjCatModal, [data-theme="dark"] #conquistaModal, [data-theme="dark"] #chartDrilldown,
   [data-theme="dark"] #rkModal{
@@ -750,6 +760,14 @@
   [data-theme="dark"] .hm-cell, [data-theme="dark"] .ass-corr-table tbody tr:hover, [data-theme="dark"] tbody tr:hover{
     background:rgba(255,255,255,.03) !important;
   }
+  /* Regra mais específica que a de cima (pinta o <td>, não a <tr>) — sem isso o fundo claro do
+     td ao passar o mouse ficava por cima do fundo escuro da linha, e a linha inteira parecia
+     "acender" branca ao passar o mouse. */
+  [data-theme="dark"] tbody tr:hover td{ background:rgba(255,255,255,.04) !important; }
+  /* Pastilhas de gestor/aba (ex.: "Patricia Monks" na tela de Desempenho Comercial) — no estado
+     inativo tinham fundo quase branco fixo, ficando ilegíveis com o texto claro do modo escuro. */
+  [data-theme="dark"] .subtab-btn{ background:var(--card) !important; color:var(--muted) !important; border-color:var(--line) !important; }
+  [data-theme="dark"] .subtab-btn.active{ background:linear-gradient(120deg,var(--primary-mid),var(--primary-light)) !important; color:#fff !important; border-color:var(--primary-mid) !important; }
   [data-theme="dark"] ::-webkit-scrollbar-thumb{ background:#3A4266; }
   [data-theme="dark"] .sidebar{ background:linear-gradient(180deg,#080C1C 0%, #0E1745 52%, #17245E 145%); }
   /* Sobrescreve o gradiente claro fixo de body{} (linha ~450) — sem isso o fundo da página
