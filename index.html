@@ -5029,10 +5029,22 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
        </label>`).join('');
 
     const atualiza = () => {
+      const mv = sel.value;
+      // O número ao lado de cada status (ex.: "Pendência 1") mostrava sempre o total em TODOS
+      // os meses, mesmo com um mês específico selecionado — parecia contradizer o total de
+      // propostas do mês (ex.: via "Pendência 1 + Em análise 2" alguém esperava 3, mas o mês
+      // tinha 19 porque o resto era de outros status). Recalcula pro mês escolhido, ou o total
+      // geral mesmo quando for "Todos os meses".
+      const escopoMes = mv ? props.filter(p => p.vg && p.vg.slice(0,7) === mv) : props;
+      const contMes = {};
+      escopoMes.forEach(p => { const k = rkmStatusKey(p.st); contMes[k] = (contMes[k]||0)+1; });
+      box.querySelectorAll('.rkm-st').forEach(l => {
+        const span = l.querySelector('.st-n');
+        if (span) span.textContent = contMes[l.dataset.k] || 0;
+      });
       box.querySelectorAll('.rkm-st').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
       const lista = rkmFiltrar(props);
       const vidas = lista.reduce((s2,p)=>s2+(p.bn||0),0);
-      const mv = sel.value;
       const nSt = rkmStatusSelecionados().length, totSt = box.querySelectorAll('input').length;
       const semStatus = nSt === 0;
       btn.disabled = semStatus || !lista.length;
