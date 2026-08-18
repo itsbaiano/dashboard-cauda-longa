@@ -5049,8 +5049,25 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       const verTodos = document.getElementById('rkmVerTodosMeses');
       if (verTodos) verTodos.onclick = (e) => { e.preventDefault(); sel.value = ''; atualiza(); };
     };
+    // Marcar/desmarcar um status manualmente (clicando direto no checkbox, sem usar o link
+    // "só pendências") tinha o mesmo problema: ficava preso no mês que já estava selecionado.
+    // Aqui, sempre que a MUDANÇA DE STATUS (não a troca manual de mês) resultar em zero
+    // propostas só por causa do mês, troca sozinho pra "Todos os meses" — ninguém marca um
+    // status esperando ver "0 propostas" só porque o filtro de mês ficou de um clique anterior.
+    const statusMudou = () => {
+      const mv = sel.value;
+      if (mv){
+        const comMes = rkmFiltrar(props).length;
+        const semMesLista = props.filter(p => {
+          const sts = rkmStatusSelecionados();
+          return !sts.length || sts.indexOf(rkmStatusKey(p.st)) >= 0;
+        });
+        if (!comMes && semMesLista.length) sel.value = '';
+      }
+      atualiza();
+    };
     sel.onchange = atualiza;
-    box.querySelectorAll('input').forEach(i => i.addEventListener('change', atualiza));
+    box.querySelectorAll('input').forEach(i => i.addEventListener('change', statusMudou));
     document.getElementById('rkmStPend').onclick = (e) => {
       e.preventDefault();
       if (!box.querySelectorAll('input').length) return; // sem propostas pra essa corretora, nada a filtrar
