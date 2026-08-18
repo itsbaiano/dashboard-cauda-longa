@@ -5217,6 +5217,14 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   window.renderRanking = renderRanking;
   window.getRankData = () => RANKDATA;
   window.getPropostasData = () => PROPOSTAS;
+  // A aba "PLANIUM" do arquivo de Pendências PME/SS é um extrato completo (todas as propostas,
+  // não só as pendentes) — substitui a lista inteira, igual a um "Meta Junho" novo substitui o
+  // mês inteiro, em vez de tentar mesclar linha a linha com o que já existia.
+  window.updatePropostasData = function(newList){
+    if (!newList || !newList.length) return;
+    PROPOSTAS = newList;
+    if (window.rankInitialized) renderRanking();
+  };
   window.getRankLabels = () => ({cur: RANK_CUR_LABEL, prev: RANK_PREV_LABEL});
   window.updateRankingData = function(curList, prevList, detectedMonth){
     // Antes RANK_CUR_LABEL/RANK_PREV_LABEL ("Julho/26" etc.) nunca mudavam depois da carga
@@ -6358,7 +6366,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     return html;
   }
 
-  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null;
+  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null, pendingPropostas = null;
   let pendingRankCur = null, pendingRankPrev = null;
 
   // Gestores da equipe do Rio (excluídos do ranking de SP)
@@ -6674,6 +6682,61 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     return { data, naoMapeados };
   }
 
+  // Aba "PLANIUM" do MESMO arquivo de Pendências PME/SS — é o histórico completo de propostas
+  // (todas, não só as pendentes), fonte real da lista usada no Ranking de Vendas → popup da
+  // corretora → "Baixar relatório". Sem isso, essa lista nunca era atualizada pelo fluxo normal
+  // de "Atualizar Dados" e ficava congelada desde a primeira vez que o site foi publicado —
+  // corretoras podiam mostrar pendência "sumida" (na verdade só desatualizada).
+  function parsePlaniumWorkbook(workbook){
+    const sheet = findSheet(workbook, 'PLANIUM');
+    if (!sheet) throw new Error('Não encontrei a aba "PLANIUM" no arquivo de Pendências PME/SS.');
+    const rows = sheetRows(sheet);
+    // Diferente da "Planilha1" (cabeçalho na linha 1), aqui a linha 1 vem em branco e o
+    // cabeçalho real fica na linha 2 — por isso procura a linha certa em vez de assumir rows[0].
+    const headerRowIdx = rows.findIndex(r => (r||[]).some(c => String(c||'').trim().toLowerCase() === 'oper_propnum'));
+    if (headerRowIdx < 0) throw new Error('A aba "PLANIUM" não tem as colunas esperadas.');
+    const header = rows[headerRowIdx].map(h => String(h||'').trim());
+    const idx = name => header.indexOf(name);
+    const iProp = idx('oper_propnum'), iCn = idx('contratante_cnpj'), iEm = idx('contratante_nome'),
+          iVg = idx('date_vigencia'), iSt = idx('status'), iBn = idx('beneficiarios'),
+          iVd = idx('vendedor_nome'), iCo = idx('corretora_nome');
+    if ([iProp,iEm,iVg,iSt,iBn,iCo].some(i=>i<0)) throw new Error('A aba "PLANIUM" não tem as colunas esperadas (oper_propnum, contratante_nome, date_vigencia, status, beneficiarios, corretora_nome).');
+    const fmtCnpj = v => {
+      if (v === null || v === undefined || v === '') return '';
+      const digits = String(v).replace(/\D/g,'').padStart(14,'0');
+      return digits.length===14 ? `${digits.slice(0,2)}.${digits.slice(2,5)}.${digits.slice(5,8)}/${digits.slice(8,12)}-${digits.slice(12,14)}` : String(v);
+    };
+    const propostas = [];
+    for (let i = headerRowIdx+1; i < rows.length; i++){
+      const row = rows[i] || [];
+      const p = row[iProp], co = row[iCo];
+      if (!p || !co) continue; // linha vazia ou sem corretora vinculada
+      propostas.push({
+        p: String(p), cn: fmtCnpj(row[iCn]), em: String(row[iEm]||''),
+        vg: excelDateToStr(row[iVg]), st: String(row[iSt]||'').trim(),
+        bn: num(row[iBn]), vd: String(row[iVd]||''), co: String(co).trim(),
+      });
+    }
+    if (!propostas.length) throw new Error('Nenhuma proposta reconhecida na aba "PLANIUM".');
+    return propostas;
+  }
+  function diffPropostas(list){
+    const keyOf = st => {
+      const v = String(st||'').toLowerCase();
+      if (v.indexOf('implant') >= 0) return 'Implantada';
+      if (v.indexOf('pend') >= 0) return 'Pendência';
+      if (v.indexOf('devolv') >= 0) return 'Devolvida';
+      if (v.indexOf('analis') >= 0 || v.indexOf('anális') >= 0) return 'Em análise';
+      if (v.indexOf('cancel') >= 0) return 'Cancelada';
+      return 'Outros';
+    };
+    const porStatus = {};
+    list.forEach(p => { const k = keyOf(p.st); porStatus[k] = (porStatus[k]||0)+1; });
+    let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-trophy></i> Propostas (Ranking de Vendas) — Resumo</h3>';
+    html += `<div style="font-size:12.5px;line-height:1.8;"><div><b>${list.length}</b> propostas carregadas — ${Object.entries(porStatus).map(([k,v])=>`${k}: <b>${v}</b>`).join(' · ')}.</div></div>`;
+    return html;
+  }
+
   const FULL_19_GESTOR_RAW_MAP = {
     'AGATHA EIKO RODRIGUES SAKAMOTO':'Agatha Sakamoto','PATRICIA PESSOA MONKS':'Patricia Monks',
     'JONATHAN LEAL DOS SANTOS SILVA':'Jonathan Leal','PABLO SERGIO RIBEIRO AMORA':'Pablo Amora',
@@ -6792,7 +6855,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     document.getElementById('filePendPme').value = '';
     document.getElementById('filePendPf').value = '';
     IMPORT_FILE_IDS.forEach(id => { const f = document.getElementById(id).closest('.file-field'); if (f) f.classList.remove('has-file'); });
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null;
   }
 
   document.getElementById('btnOpenImport').addEventListener('click', () => {
@@ -6824,7 +6887,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     btn.style.cursor = 'default';
     btn.innerHTML = '<span class="spinner"></span> Processando...';
     summaryEl.style.display = 'none';
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null;
     let summaryHtml = '';
     try {
       // ---- AUTO-DETECÇÃO: roteia cada arquivo pelo conteúdo, não pelo campo ----
@@ -6907,6 +6970,14 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         const wb = await readFileAsWorkbook(pendPmeFile);
         pendingPendPme = parsePmePendenciasWorkbook(wb);
         summaryHtml += diffPendPme(pendingPendPme);
+        // Mesmo arquivo tem a aba "PLANIUM" (histórico completo de propostas) — atualiza junto
+        // a lista usada no Ranking de Vendas, sem precisar de um upload separado.
+        try {
+          pendingPropostas = parsePlaniumWorkbook(wb);
+          summaryHtml += diffPropostas(pendingPropostas);
+        } catch(e){
+          summaryHtml += `<div style="font-size:12px; margin-top:6px; color:var(--muted);">Propostas do Ranking não atualizadas: ${e.message}</div>`;
+        }
       }
       if (pendPfFile){
         statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Pendências PF...</p>';
@@ -6959,6 +7030,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         pf: pendingPendPf ? pendingPendPf.data : undefined,
       });
     }
+    if (pendingPropostas && window.updatePropostasData) window.updatePropostasData(pendingPropostas);
     const ts = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
     const el = document.getElementById('sidebarUpdatedAt'); if (el) el.textContent = ts;
     if (window.renderOverview) window.renderOverview();
