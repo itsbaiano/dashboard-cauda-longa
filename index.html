@@ -345,6 +345,8 @@
   .resumo-card .rc-avatar{width:30px; height:30px; border-radius:50%; background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;}
   .resumo-card .rc-name{font-weight:700; color:var(--navy); flex:1; font-size:13px;}
   .resumo-card .rc-stats{display:flex; gap:24px; flex-wrap:wrap;}
+  .resumo-card .rc-stats > div[onclick], .resumo-card > div[onclick]{border-radius:8px; padding:3px 6px; margin:-3px -6px; transition:background .12s;}
+  .resumo-card .rc-stats > div[onclick]:hover, .resumo-card > div[onclick]:hover{background:rgba(46,82,212,.08);}
   .resumo-card .rc-label{font-size:10.5px; color:var(--muted); margin-bottom:2px; font-weight:600;}
   .resumo-card .rc-value{font-size:19px; font-weight:800;}
 
@@ -778,6 +780,9 @@
      td ao passar o mouse ficava por cima do fundo escuro da linha, e a linha inteira parecia
      "acender" branca ao passar o mouse. */
   [data-theme="dark"] tbody tr:hover td{ background:rgba(255,255,255,.04) !important; }
+  /* Tabela do Comparativo (Confronto Head-to-Head) — a listra clara fixa (#fbfcff) das linhas
+     pares nunca foi ajustada pro escuro, virando um retângulo branco com texto ilegível por cima. */
+  [data-theme="dark"] .cmp-table tbody tr:nth-child(even){ background:rgba(255,255,255,.04); }
   /* Pastilhas de gestor/aba (ex.: "Patricia Monks" na tela de Desempenho Comercial) — no estado
      inativo tinham fundo quase branco fixo, ficando ilegíveis com o texto claro do modo escuro. */
   [data-theme="dark"] .subtab-btn{ background:var(--card) !important; color:var(--muted) !important; border-color:var(--line) !important; }
@@ -981,6 +986,7 @@
       <button class="sidebar-btn" id="navBtnEl" aria-label="Elegibilidade"><span class="ico"><i class=ic-target></i></span> <span class="btn-label">Elegibilidade</span></button>
       <button class="sidebar-btn" id="navBtnCompare" aria-label="Comparativo"><span class="ico"><i class=ic-scale></i></span> <span class="btn-label">Comparativo</span></button>
       <button class="sidebar-btn" id="navBtnRank" aria-label="Ranking de Vendas"><span class="ico"><i class=ic-trophy></i></span> <span class="btn-label">Ranking de Vendas</span></button>
+      <button class="sidebar-btn" id="navBtnConversao" aria-label="Conversão"><span class="ico"><i class=ic-trend></i></span> <span class="btn-label">Conversão</span></button>
     </nav>
     <div class="sidebar-month-wrap" style="margin-top:16px; padding:0 4px;">
       <label class="sidebar-month-label" style="font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:rgba(255,255,255,.55); display:block; margin-bottom:6px;">Mês de referência</label>
@@ -1059,10 +1065,16 @@
             <label>Pendências PME/SS</label>
             <div class="file-field"><input type="file" id="filePendPme" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="filePendPme" title="Remover arquivo">✕ remover</button></div>
           </div>
-          <div class="f-group" style="margin-bottom:16px;">
+          <div class="f-group" style="margin-bottom:4px;">
             <label>Pendências PF / Orçamentos</label>
             <div class="file-field"><input type="file" id="filePendPf" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="filePendPf" title="Remover arquivo">✕ remover</button></div>
           </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:12px;"></div>
+          <div class="f-group" style="margin-bottom:4px;">
+            <label>Aguardando Assinatura (Notificadas)</label>
+            <div class="file-field"><input type="file" id="fileAssinatura" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileAssinatura" title="Remover arquivo">✕ remover</button></div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:16px;">O relatório "stats_export_gndi" já com as colunas GESTOR e CORRETORA preenchidas (o mesmo VLOOKUP que você já faz hoje).</div>
           <div style="border-top:1px solid var(--line); padding-top:14px;">
             <div style="font-size:12px; font-weight:800; color:var(--navy); margin-bottom:4px;">Ranking de Vendas — mês anterior</div>
             <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">O mês atual do ranking vem do arquivo principal lá em cima (o mesmo "NDI SP - Por Gestor"). Aqui você só troca o <b>mês anterior</b>, quando virar o mês.</div>
@@ -1918,6 +1930,90 @@
     </div>
   </div>
 
+  <!-- ===================== VIEW: CONVERSÃO ===================== -->
+  <div class="view-panel" id="viewConversao">
+    <div class="view-head">
+      <div class="view-head-icon"><i class=ic-trend></i></div>
+      <div>
+        <h1>Conversão</h1>
+        <p>Funil PME/SS · SLA, aguardando assinatura e conversão, por executivo</p>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="f-group">
+        <label>Equipe</label>
+        <select id="convEquipe" class="ic-left ic-building"></select>
+      </div>
+      <div class="f-group">
+        <label>Gestor</label>
+        <select id="convGestor" class="ic-left ic-user"></select>
+      </div>
+      <div style="margin-left:auto; align-self:center; font-size:12px; color:var(--muted);" id="convCount"></div>
+    </div>
+
+    <div class="kpi-row" id="convKpiRow" style="grid-template-columns:repeat(4,1fr);"></div>
+
+    <div class="panel">
+      <h2>Por Executivo — hoje</h2>
+      <div class="panel-sub">Clique num card pra ver o detalhe (tabela e gráficos) daquele executivo</div>
+      <div id="convGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:14px; margin-top:14px;"></div>
+    </div>
+
+    <div class="panel" id="convMacroPanel">
+      <h2>Visão Trimestral / Semestral</h2>
+      <div class="panel-sub">Tempo médio até resolver uma pendência, comparado ao período anterior</div>
+      <div id="convMacroBody" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div id="convDetailOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:150; align-items:center; justify-content:center; padding:20px;">
+    <div id="convDetailModal" style="background:var(--card); border-radius:18px; max-width:640px; width:100%; max-height:88vh; overflow-y:auto; padding:26px; box-shadow:0 20px 60px rgba(16,30,99,.3);">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:18px;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div id="convDetailAvatar" style="width:42px; height:42px; border-radius:50%; background:var(--navy); color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; flex-shrink:0;"></div>
+          <div>
+            <h2 style="font-size:16px; color:var(--navy); margin-bottom:2px;" id="convDetailName">—</h2>
+            <p style="font-size:12px; color:var(--muted);" id="convDetailEquipe">—</p>
+          </div>
+        </div>
+        <button id="btnCloseConvDetail" class="btn-reset">Fechar ✕</button>
+      </div>
+      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <thead><tr>
+          <th style="text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); padding:0 4px 8px; border-bottom:2px solid var(--line);">Indicador</th>
+          <th style="text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); padding:0 4px 8px; border-bottom:2px solid var(--line);">Ontem</th>
+          <th style="text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); padding:0 4px 8px; border-bottom:2px solid var(--line);">Hoje</th>
+          <th style="text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); padding:0 4px 8px; border-bottom:2px solid var(--line);">Crescimento</th>
+        </tr></thead>
+        <tbody id="convDetailTableBody"></tbody>
+      </table>
+      <div class="panel-sub" style="margin-bottom:6px;">Ontem × Hoje</div>
+      <div class="chart-box" style="height:200px; margin-bottom:22px;"><canvas id="convDetailChartBar"></canvas></div>
+      <div class="panel-sub" style="margin-bottom:6px;">Propostas por status</div>
+      <div class="chart-box" style="height:200px; margin-bottom:18px;"><canvas id="convDetailChartStatus"></canvas></div>
+      <button class="btn-reset" id="convDetailPendBtn" style="width:100%; background:var(--navy); color:#fff; border-color:var(--navy);">Ver pendências detalhadas (busca)</button>
+    </div>
+  </div>
+
+  <div id="convAssinOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:150; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:var(--card); border-radius:16px; padding:26px; max-width:680px; width:100%; max-height:85vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div>
+          <h2 style="font-size:16px; color:var(--navy); margin-bottom:2px;">Aguardando Assinatura — <span id="convAssinGestor">—</span></h2>
+          <p style="font-size:12.5px; color:var(--muted);" id="convAssinSub">—</p>
+        </div>
+        <button id="btnCloseConvAssin" class="btn-reset">Fechar ✕</button>
+      </div>
+      <div class="table-wrap" style="margin-top:16px;">
+        <table>
+          <thead><tr><th>Contratante</th><th>Corretora</th><th>Motivo</th><th class="num">Vidas</th><th>Desde</th></tr></thead>
+          <tbody id="convAssinBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div id="rkModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(16,30,99,.45); z-index:200; align-items:center; justify-content:center; padding:20px;">
     <div id="rkModal" style="background:var(--card); border-radius:18px; max-width:520px; width:100%; max-height:88vh; overflow-y:auto; box-shadow:0 20px 60px rgba(16,30,99,.3);">
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:22px 24px 16px; border-bottom:1px solid var(--line);">
@@ -1982,7 +2078,10 @@ function showView(view){
   document.getElementById('navBtnCompare').classList.toggle('active', view==='compare');
   document.getElementById('navBtnRank').classList.toggle('active', view==='rank');
   document.getElementById('viewRank').classList.toggle('active', view==='rank');
+  document.getElementById('navBtnConversao').classList.toggle('active', view==='conversao');
+  document.getElementById('viewConversao').classList.toggle('active', view==='conversao');
   if (view==="rank" && !window.rankInitialized){ window.rankInitialized = true; renderRanking(); }
+  if (view==='conversao' && window.renderConversao){ window.renderConversao(); }
   document.getElementById('mainHeader').style.display = view==='overview' ? 'none' : '';
   if(view==='el' && !elInitialized){
     elInitialized = true;
@@ -2000,6 +2099,7 @@ document.getElementById('navBtnMj').addEventListener('click', ()=>showView('mj')
 document.getElementById('navBtnEl').addEventListener('click', ()=>showView('el'));
 document.getElementById('navBtnCompare').addEventListener('click', ()=>showView('compare'));
 document.getElementById('navBtnRank').addEventListener('click', ()=>showView('rank'));
+document.getElementById('navBtnConversao').addEventListener('click', ()=>showView('conversao'));
 window.rankInitialized = false;
 document.getElementById('mainHeader').style.display = 'none';
 let PUBLISHED_AT = window.__DASH_DATA__.publishedAt || "";
@@ -2022,6 +2122,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let MJ_TEAMS = MJ_TEAMS_BY_MONTH[currentMonth];
   let PENDENCIAS_PME = window.__DASH_DATA__.PENDENCIAS_PME;
   let PENDENCIAS_PF = window.__DASH_DATA__.PENDENCIAS_PF;
+  let PENDENCIAS_ASSINATURA = window.__DASH_DATA__.PENDENCIAS_ASSINATURA || {};
   let MJ_CORRETORAS = window.__DASH_DATA__.MJ_CORRETORAS;
   // Corretoras "sem gestor atribuído" / "código não localizado no database" (linhas de
   // rodapé da planilha Meta) — guardado por mês, igual MJ_TEAMS_BY_MONTH. Antes era um valor
@@ -2416,13 +2517,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   // Mês cronologicamente mais recente já importado — independente de qual mês
   // o usuário está vendo no momento no dropdown "Mês de referência".
   window.getLatestKnownMonth = function(){ return Object.keys(MJ_TEAMS_BY_MONTH).sort().pop(); };
-  window.getPendenciasData = function(){ return {pme: PENDENCIAS_PME, pf: PENDENCIAS_PF}; };
+  window.getPendenciasData = function(){ return {pme: PENDENCIAS_PME, pf: PENDENCIAS_PF, assinatura: PENDENCIAS_ASSINATURA}; };
   window.getPublishableState = function(){
     return {
       MJ_TEAMS_BY_MONTH: MJ_TEAMS_BY_MONTH,
       currentMonth: currentMonth,
       PENDENCIAS_PME: PENDENCIAS_PME,
       PENDENCIAS_PF: PENDENCIAS_PF,
+      PENDENCIAS_ASSINATURA: PENDENCIAS_ASSINATURA,
       MJ_CORRETORAS: MJ_CORRETORAS,
       MJ_NAO_ATRIBUIDO_BY_MONTH: MJ_NAO_ATRIBUIDO_BY_MONTH,
       MJ_BENCHMARK: MJ_BENCHMARK,
@@ -2431,6 +2533,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   window.updatePendenciasData = function(newData){
     if (newData.pme) PENDENCIAS_PME = newData.pme;
     if (newData.pf) PENDENCIAS_PF = newData.pf;
+  };
+  window.updateAssinaturaData = function(newData){
+    if (newData) PENDENCIAS_ASSINATURA = newData;
   };
 
   window.updateIntegradoFromRaw = function(byGestor){
@@ -3091,6 +3196,58 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let PROPOSTAS = window.__DASH_DATA__.PROPOSTAS;
   let RANK_CUR_LABEL = window.__DASH_DATA__.RANK_CUR_LABEL;
   let RANK_PREV_LABEL = window.__DASH_DATA__.RANK_PREV_LABEL;
+  // Histórico de tempo-de-resolução (base do "macro" da aba Conversão) — cada vez que uma
+  // proposta que estava ativa (pendência/análise) some da lista ou vira status final numa
+  // importação nova, grava aqui quanto tempo ela ficou parada. Só acumula a partir de agora
+  // (sem reconstruir o passado) — ver window.updatePropostasData.
+  let SLA_HISTORICO = window.__DASH_DATA__.SLA_HISTORICO || [];
+  // "Ontem vs hoje" da aba Conversão — um retrato por gestor (assinatura/funil) gravado a
+  // cada atualização, guardado por data. Diferente do SLA_HISTORICO (que é por proposta
+  // resolvida), aqui é só o total do dia, pra bater com o jeito que a planilha "Crescimento
+  // Geral" do sênior compara ontem x hoje.
+  let DAILY_SNAPSHOTS = window.__DASH_DATA__.DAILY_SNAPSHOTS || {};
+  function computeGestorSnapshotNow(){
+    const assinaturaData = (window.getPendenciasData ? window.getPendenciasData().assinatura : {}) || {};
+    const rankByGestor = {};
+    (RANKDATA||[]).forEach(r => { if (r.g) rankByGestor[r.g] = (rankByGestor[r.g]||0) + (r.cur||0); });
+    const gestores = [...new Set(PROPOSTAS.map(p=>p.g).filter(Boolean).concat(Object.keys(assinaturaData)).concat(Object.keys(rankByGestor)))];
+    const snap = {};
+    gestores.forEach(g => {
+      const ps = PROPOSTAS.filter(p=>p.g===g);
+      const funilAtivo = ps.filter(p=>/pend|analis/i.test(p.st)).reduce((s,p)=>s+(p.bn||0),0);
+      const assinatura = (assinaturaData[g]||[]).reduce((s,r)=>s+(r.beneficiarios||0),0);
+      const implantadas = ps.filter(p=>/implant/i.test(p.st)).length;
+      snap[g] = { funilAtivo, assinatura, ranking: rankByGestor[g]||0, implantadas, totalPropostas: ps.length };
+    });
+    return snap;
+  }
+  function saveDailySnapshot(){
+    const hoje = new Date().toISOString().slice(0,10);
+    DAILY_SNAPSHOTS[hoje] = computeGestorSnapshotNow();
+    // Mantém só os últimos 60 dias — suficiente pra qualquer comparação de período, sem o
+    // data.json crescer sem limite.
+    const datas = Object.keys(DAILY_SNAPSHOTS).sort();
+    while (datas.length > 60){ delete DAILY_SNAPSHOTS[datas.shift()]; }
+  }
+  function getYesterdaySnapshot(){
+    const hoje = new Date().toISOString().slice(0,10);
+    const datas = Object.keys(DAILY_SNAPSHOTS).filter(d => d < hoje).sort();
+    return datas.length ? DAILY_SNAPSHOTS[datas[datas.length-1]] : null;
+  }
+  function slaAddDU(d,n){ let c=new Date(d), a=0; while(a<n){ c.setDate(c.getDate()+1); if (c.getDay()!==0 && c.getDay()!==6) a++; } return c; }
+  function slaDuDiff(a,b){ let c=0, cur=new Date(a); while(cur<b){ if (cur.getDay()!==0 && cur.getDay()!==6) c++; cur.setDate(cur.getDate()+1); } return c; }
+  function slaParseYMD(s){ const [y,m,d] = String(s||'').split('-').map(Number); return (y&&m&&d) ? new Date(y,m-1,d) : null; }
+  // SLA de "aging" — há quanto tempo (dias úteis) uma proposta está parada na etapa atual,
+  // comparado com hoje. PME: prazo de 3 dias úteis. Mesma lógica usada no painel do sênior.
+  function slaCalc(dataEntradaStr, prazoDU){
+    const dataEntrada = slaParseYMD(dataEntradaStr);
+    if (!dataEntrada) return {de:0, atraso:0, label:'—'};
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const de = slaDuDiff(dataEntrada, hoje);
+    const prazo = slaAddDU(dataEntrada, prazoDU||3);
+    const atraso = hoje>prazo ? slaDuDiff(prazo, hoje) : 0;
+    return {de, atraso, label: atraso===0?'No prazo':atraso<=2?'Atenção':'Crítico'};
+  }
   const GESTOR_EQUIPE = {"VENDA INTERNA": "VENDA INTERNA", "PATRICIA PESSOA MONKS": "CAUDA LONGA", "KAROLLAINNY RANGEL DE SOUSA LOPES": "DIGITAL", "PABLO SERGIO RIBEIRO AMORA": "CAUDA LONGA", "GUILHERME DE LIMA MUSACHI": "PLATAFORMA ABC/ALTO TIETÊ/BX", "CAMILA ALVES PERTINHEZ": "PLATAFORMA SP", "JONATHAN LEAL DOS SANTOS SILVA": "CAUDA LONGA", "MAXUEL PIMENTEL NOBREGA": "DIGITAL", "AGATHA EIKO RODRIGUES SAKAMOTO": "CAUDA LONGA", "DANIELA NOVAIS DOS SANTOS": "DIGITAL", "ERIKA DE SOUSA SILVA": "PLATAFORMA SP", "LAIS DOS SANTOS MARTINS": "PLATAFORMA SP", "WILDER COCA PATZI": "PLATAFORMA SP", "AMANDA DOS SANTOS SOBRAL": "DIGITAL", "IZABELE DE OLIVEIRA DA SILVA": "PLATAFORMA ABC/ALTO TIETÊ/BX", "KAIQUE ARAUJO DA SILVA": "INTERIOR SP", "VIVIAN DE CASSIA AMBROSIO": "PLATAFORMA ABC/ALTO TIETÊ/BX", "DANIELA FREDERICO MARTINS CAMPINAS": "INTERIOR SP", "FLAVIA AUANA SILVA DE OLIVEIRA": "INTERIOR SP", "DANIELA FREDERICO MARTINS AM": "INTERIOR SP"};
 
   const fmt0 = n => Math.round(n).toLocaleString('pt-BR');
@@ -5138,27 +5295,31 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     </tr>`).join('');
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Propostas — ${esc(r.n)}</title>
 <style>
-@page{size:A4 landscape;margin:12mm}
+/* Retrato (não paisagem) de propósito — a caixa de impressão do navegador nem sempre respeita
+   "@page landscape" sozinha (fica dependendo do usuário trocar manualmente a orientação na
+   caixa de diálogo), o que fazia o conteúdo sair torto/cortado. Retrato é o padrão universal,
+   então sai certo sem precisar mexer em nada na hora de imprimir/salvar como PDF. */
+@page{size:A4 portrait;margin:10mm}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;color:#131C4F;font-size:10px}
-.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1D33A8;padding-bottom:10px;margin-bottom:14px}
-.hd h1{font-size:17px;color:#101E63;letter-spacing:-.3px}
-.hd .sb{font-size:11px;color:#56608F;margin-top:3px}
-.hd .rt{text-align:right;font-size:9.5px;color:#56608F;line-height:1.6}
-.hd .rt b{color:#101E63;font-size:11px}
-.kp{display:flex;gap:10px;margin-bottom:14px}
-.kp div{flex:1;border:1px solid #E3E9F8;border-radius:8px;padding:9px 12px;background:#F8FAFF}
-.kp .l{font-size:8.5px;font-weight:700;color:#56608F;text-transform:uppercase;letter-spacing:.4px}
-.kp .v{font-size:17px;font-weight:800;color:#101E63;margin-top:2px}
-table{width:100%;border-collapse:collapse}
-th{background:#101E63;color:#fff;font-size:8.5px;text-transform:uppercase;letter-spacing:.4px;padding:7px 6px;text-align:left}
-td{padding:6px;border-bottom:1px solid #E8EDF7;font-size:9.5px}
-td:nth-child(3){font-size:9px;color:#56608F;white-space:nowrap}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#131C4F;font-size:9px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1D33A8;padding-bottom:8px;margin-bottom:12px}
+.hd h1{font-size:15px;color:#101E63;letter-spacing:-.3px}
+.hd .sb{font-size:10px;color:#56608F;margin-top:3px}
+.hd .rt{text-align:right;font-size:8.5px;color:#56608F;line-height:1.5}
+.hd .rt b{color:#101E63;font-size:10px}
+.kp{display:flex;gap:8px;margin-bottom:12px}
+.kp div{flex:1;border:1px solid #E3E9F8;border-radius:7px;padding:7px 9px;background:#F8FAFF}
+.kp .l{font-size:7.5px;font-weight:700;color:#56608F;text-transform:uppercase;letter-spacing:.4px}
+.kp .v{font-size:14px;font-weight:800;color:#101E63;margin-top:2px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{background:#101E63;color:#fff;font-size:7px;text-transform:uppercase;letter-spacing:.3px;padding:5px 4px;text-align:left}
+td{padding:4px;border-bottom:1px solid #E8EDF7;font-size:8px;overflow-wrap:break-word}
+td:nth-child(3){font-size:7.5px;color:#56608F}
 tr:nth-child(even) td{background:#F8FAFF}
 td.c{text-align:center}td.b{font-weight:700}
-.st{display:inline-block;padding:1px 7px;border-radius:20px;border:1px solid;font-size:8.5px;font-weight:700;text-transform:capitalize}
-tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid #1D33A8}
-.ft{margin-top:14px;font-size:8.5px;color:#8B93B8;border-top:1px solid #E3E9F8;padding-top:8px;display:flex;justify-content:space-between}
+.st{display:inline-block;padding:1px 5px;border-radius:20px;border:1px solid;font-size:7px;font-weight:700;text-transform:capitalize;white-space:nowrap}
+tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #1D33A8}
+.ft{margin-top:12px;font-size:7.5px;color:#8B93B8;border-top:1px solid #E3E9F8;padding-top:6px;display:flex;justify-content:space-between}
 @media print{.noprint{display:none}}
 .noprint{position:fixed;top:10px;right:10px;background:#1D33A8;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,.2)}
 </style></head><body>
@@ -5174,7 +5335,15 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   <div><div class="l">Em análise / pendência</div><div class="v">${props.filter(p=>{const s=String(p.st).toLowerCase();return s.indexOf('analise')>=0||s.indexOf('pend')>=0;}).length}</div></div>
 </div>
 <table>
-  <thead><tr><th>Proposta</th><th>Empresa</th><th style="text-align:center">CNPJ</th><th style="text-align:center">Vigência</th><th style="text-align:center">Status</th><th style="text-align:center">Vidas</th><th>Vendedor</th></tr></thead>
+  <thead><tr>
+    <th style="width:9%">Proposta</th>
+    <th style="width:27%">Empresa</th>
+    <th style="width:15%;text-align:center">CNPJ</th>
+    <th style="width:10%;text-align:center">Vigência</th>
+    <th style="width:13%;text-align:center">Status</th>
+    <th style="width:7%;text-align:center">Vidas</th>
+    <th style="width:19%">Vendedor</th>
+  </tr></thead>
   <tbody>${linhas}</tbody>
   <tfoot><tr><td colspan="5">Total — ${props.length} proposta(s)</td><td class="c">${rkFmt(vidasTot)}</td><td></td></tr></tfoot>
 </table>
@@ -5222,9 +5391,272 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
   // mês inteiro, em vez de tentar mesclar linha a linha com o que já existia.
   window.updatePropostasData = function(newList){
     if (!newList || !newList.length) return;
+    // Detecta resolução comparando com a leva anterior: proposta que ANTES estava ativa
+    // (pendência/análise) e que na leva NOVA não está mais ativa (virou implantada, foi
+    // devolvida/cancelada, ou simplesmente não aparece mais) — grava quanto tempo ela ficou
+    // parada. Isso é o "cofrinho" que alimenta a visão macro (trimestral/semestral) mais pra
+    // frente; nunca deixa a atualização normal quebrar por causa disso (try/catch).
+    try {
+      const isAtiva = st => /pend|analis/i.test(String(st||''));
+      const oldActive = {};
+      (PROPOSTAS||[]).forEach(p => { if (p.p && p.dr && isAtiva(p.st)) oldActive[p.p] = p; });
+      if (Object.keys(oldActive).length){
+        const newMap = {};
+        newList.forEach(p => { if (p.p) newMap[p.p] = p; });
+        const hoje = new Date(); hoje.setHours(0,0,0,0);
+        const hojeStr = hoje.toISOString().slice(0,10);
+        Object.keys(oldActive).forEach(id => {
+          const antigo = oldActive[id];
+          const novo = newMap[id];
+          if (novo && isAtiva(novo.st)) return; // continua ativa, nada a registrar ainda
+          const dataEntrada = slaParseYMD(antigo.dr);
+          if (!dataEntrada) return;
+          SLA_HISTORICO.push({
+            gestor: antigo.g, proposta: id, tipo: 'PME',
+            dataEntrada: antigo.dr, dataResolucao: hojeStr,
+            duracaoDU: slaDuDiff(dataEntrada, hoje),
+            statusFinal: novo ? novo.st : (antigo.st + ' (sumiu da lista)'),
+          });
+        });
+      }
+    } catch(e){ console.warn('SLA_HISTORICO: não foi possível processar', e); }
     PROPOSTAS = newList;
     if (window.rankInitialized) renderRanking();
   };
+  window.getSlaHistorico = () => SLA_HISTORICO;
+  window.getDailySnapshots = () => DAILY_SNAPSHOTS;
+  window.saveDailySnapshot = saveDailySnapshot;
+
+  // ══════════════════════════════════════════════════════════════
+  // ABA CONVERSÃO — SLA (aging), Aguardando Assinatura e % Conversão
+  // por executivo, tudo a partir do que já é importado hoje (PLANIUM
+  // + Notificadas). A parte "macro" (trimestral) só mostra números
+  // reais quando SLA_HISTORICO já tiver dado suficiente acumulado.
+  // ══════════════════════════════════════════════════════════════
+  let convFiltroEquipe = 'CAUDA LONGA';
+  let convFiltroGestor = '';
+  let convFiltersReady = false;
+  function convPopulateGestorSelect(){
+    const selG = document.getElementById('convGestor');
+    const gestoresPossiveis = Object.keys(GESTOR_EQUIPE).filter(g => !convFiltroEquipe || GESTOR_EQUIPE[g]===convFiltroEquipe).sort();
+    selG.innerHTML = '<option value="">Todos os gestores</option>' + gestoresPossiveis.map(g => `<option value="${g}">${g}</option>`).join('');
+    selG.value = convFiltroGestor;
+  }
+  function convSetupFilters(){
+    if (convFiltersReady) return;
+    convFiltersReady = true;
+    const equipes = [...new Set(Object.values(GESTOR_EQUIPE))].sort();
+    const selE = document.getElementById('convEquipe');
+    selE.innerHTML = '<option value="">Todas as equipes</option>' + equipes.map(eq => `<option value="${eq}">${eq}</option>`).join('');
+    selE.value = convFiltroEquipe;
+    convPopulateGestorSelect();
+    selE.addEventListener('change', () => { convFiltroEquipe = selE.value; convFiltroGestor=''; convPopulateGestorSelect(); window.renderConversao(); });
+    document.getElementById('convGestor').addEventListener('change', (e) => { convFiltroGestor = e.target.value; window.renderConversao(); });
+  }
+
+  window.renderConversao = function(){
+    convSetupFilters();
+    const fmt0c = n => Math.round(n||0).toLocaleString('pt-BR');
+    const iniciaisConv = nome => String(nome||'').trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
+    const isAtiva = st => /pend|analis/i.test(String(st||''));
+    const isImplantada = st => /implant/i.test(String(st||''));
+
+    const assinaturaData = (window.getPendenciasData ? window.getPendenciasData().assinatura : {}) || {};
+    const todosGestores = [...new Set(PROPOSTAS.map(p=>p.g).filter(Boolean).concat(Object.keys(assinaturaData)))];
+    const gestores = todosGestores.filter(g => {
+      if (convFiltroGestor) return g === convFiltroGestor;
+      if (convFiltroEquipe) return GESTOR_EQUIPE[g] === convFiltroEquipe;
+      return true;
+    }).sort();
+    document.getElementById('convCount').textContent = gestores.length + (gestores.length===1 ? ' gestor' : ' gestores');
+
+    const ontem = getYesterdaySnapshot() || {};
+    const cresce = (hoje, ant) => (ant===undefined || ant===null || ant===0) ? null : Math.round((hoje-ant)/ant*100);
+
+    const rows = gestores.map(g => {
+      const ps = PROPOSTAS.filter(p=>p.g===g);
+      const implantadas = ps.filter(p=>isImplantada(p.st));
+      const ativas = ps.filter(p=>isAtiva(p.st));
+      const slas = ativas.filter(p=>p.dr).map(p=>slaCalc(p.dr, 3));
+      const criticos = slas.filter(s=>s.label==='Crítico').length;
+      const atrasoMedio = slas.length ? Math.round(slas.reduce((s,x)=>s+x.atraso,0)/slas.length) : 0;
+      const conv = ps.length ? Math.round(implantadas.length/ps.length*100) : null;
+      const assinRows = assinaturaData[g] || [];
+      const assinTotal = assinRows.reduce((s,r)=>s+(r.beneficiarios||0),0);
+      const ativasVidas = ativas.reduce((s,p)=>s+(p.bn||0),0);
+      const y = ontem[g] || null;
+      return { gestor:g, total:ps.length, ativasCount: ativas.length,
+        ativasVidas, criticos, atrasoMedio, conv, assinTotal,
+        funilOntem: y ? y.funilAtivo : null, assinOntem: y ? y.assinatura : null,
+        cresFunil: y ? cresce(ativasVidas, y.funilAtivo) : null,
+        cresAssin: y ? cresce(assinTotal, y.assinatura) : null };
+    }).filter(r => r.total>0 || r.assinTotal>0).sort((a,b)=> b.total - a.total);
+
+    const totalPropostas = rows.reduce((s,r)=>s+r.total,0);
+    const totalImplantadas = gestores.reduce((s,g)=>s+PROPOSTAS.filter(p=>p.g===g && isImplantada(p.st)).length,0);
+    const convGeral = totalPropostas ? Math.round(totalImplantadas/totalPropostas*100) : 0;
+    const totalAssin = rows.reduce((s,r)=>s+r.assinTotal,0);
+    const totalCriticos = rows.reduce((s,r)=>s+r.criticos,0);
+    const totalAtivasVidas = rows.reduce((s,r)=>s+r.ativasVidas,0);
+
+    const kpis = [
+      {icon:"<i class=ic-trend></i>", label:"% Conversão do Funil", value: convGeral+'%', sub: totalImplantadas+' de '+fmt0c(totalPropostas)+' propostas', subClass: convGeral>=70?'pos':(convGeral<40?'neg':'warn')},
+      {icon:"<i class=ic-clip></i>", label:"Aguardando Assinatura", value: fmt0c(totalAssin)+' vidas', sub: 'em '+rows.filter(r=>r.assinTotal>0).length+' gestores', subClass:''},
+      {icon:"<i class=ic-alarm></i>", label:"Críticos de SLA", value: totalCriticos, sub: totalCriticos ? 'ação imediata' : 'nenhum agora', subClass: totalCriticos?'neg':'pos'},
+      {icon:"<i class=ic-clock></i>", label:"Em Funil (ativo)", value: fmt0c(totalAtivasVidas)+' vidas', sub: 'análise + pendência', subClass:''},
+    ];
+    document.getElementById('convKpiRow').innerHTML = kpis.map(k => `
+      <div class="kpi"><div class="kpi-icon">${k.icon}</div><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="sub ${k.subClass}">${k.sub}</div></div>
+    `).join('');
+
+    // Seta de crescimento — pra Funil e Assinatura, MENOS é melhor (menos gente parada),
+    // por isso a cor é invertida em relação ao sentido comum de "subiu = verde".
+    const cresLabel = (pct) => {
+      if (pct===null) return '<span style="color:var(--muted); font-size:11px;">sem dado de ontem</span>';
+      const cor = pct===0 ? 'var(--muted)' : (pct>0 ? 'var(--accent-red)' : 'var(--accent-mint)');
+      const seta = pct===0 ? '·' : (pct>0 ? '▲' : '▼');
+      return `<span style="color:${cor}; font-weight:700; font-size:11px;">${seta} ${Math.abs(pct)}% vs ontem</span>`;
+    };
+
+    // Cada número do card leva pra parte específica dele (busca de pendências, lista de
+    // assinatura, ou o detalhe/gráficos) — sempre com stopPropagation pra não também disparar
+    // o clique geral do card (que abre o detalhe completo, continua funcionando como "ver tudo").
+    const go = (fn, gestor) => `event.stopPropagation(); window.${fn}('${gestor.replace(/'/g,"\\'")}')`;
+    document.getElementById('convGrid').innerHTML = rows.map(r => { const g = r.gestor; return `
+      <div class="resumo-card" style="cursor:pointer;" onclick="window.openConversaoDetail('${g.replace(/'/g,"\\'")}')" title="Ver detalhe de ${g}">
+        <div class="rc-head"><div class="rc-avatar">${iniciaisConv(g)}</div><div class="rc-name">${g}</div>
+          ${r.criticos ? `<span onclick="${go('showPendenciasModal',g)}" style="font-size:9px; font-weight:800; padding:3px 8px; border-radius:20px; background:rgba(245,54,74,.12); color:var(--accent-red); white-space:nowrap; cursor:pointer;" title="Ver pendências de ${g}">${r.criticos} crítico${r.criticos>1?'s':''}</span>` : ''}
+        </div>
+        <div class="rc-stats" style="row-gap:10px;">
+          <div onclick="${go('showPendenciasModal',g)}" style="cursor:pointer;" title="Ver pendências de ${g}"><div class="rc-label">SLA médio</div><div class="rc-value" style="font-size:15px; color:${r.atrasoMedio>0?'var(--accent-red)':'var(--accent-mint)'};">${r.atrasoMedio>0 ? '+'+r.atrasoMedio+'d' : 'No prazo'}</div></div>
+          <div onclick="${go('openAssinaturaList',g)}" style="cursor:pointer;" title="Ver lista de assinaturas de ${g}"><div class="rc-label">Aguard. Assinatura</div><div class="rc-value" style="font-size:15px; color:var(--primary-light);">${fmt0c(r.assinTotal)}</div></div>
+          <div onclick="${go('showPendenciasModal',g)}" style="cursor:pointer;" title="Ver pendências de ${g}"><div class="rc-label">Em Funil</div><div class="rc-value" style="font-size:15px; color:var(--accent-gold);">${r.ativasCount}</div></div>
+          <div onclick="${go('openConversaoDetail',g)}" style="cursor:pointer;" title="Ver detalhe de ${g}"><div class="rc-label">% Conversão</div><div class="rc-value" style="font-size:15px; color:${r.conv!==null && r.conv>=70?'var(--accent-mint)':'var(--navy)'};">${r.conv!==null ? r.conv+'%' : '—'}</div></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid var(--line);">
+          <div onclick="${go('openConversaoDetail',g)}" style="cursor:pointer;" title="Ver detalhe de ${g}"><div class="rc-label">Funil ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.funilOntem!==null ? fmt0c(r.funilOntem)+' → '+fmt0c(r.ativasVidas) : '—'}</div>${cresLabel(r.cresFunil)}</div>
+          <div onclick="${go('openAssinaturaList',g)}" style="cursor:pointer; text-align:right;" title="Ver lista de assinaturas de ${g}"><div class="rc-label">Assinatura ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.assinOntem!==null ? fmt0c(r.assinOntem)+' → '+fmt0c(r.assinTotal) : '—'}</div>${cresLabel(r.cresAssin)}</div>
+        </div>
+      </div>`; }).join('');
+
+    const macroBody = document.getElementById('convMacroBody');
+    const gestoresSet = new Set(gestores);
+    const slaHistFiltrado = SLA_HISTORICO.filter(h => gestoresSet.has(h.gestor));
+    if (!slaHistFiltrado.length){
+      macroBody.innerHTML = `<div style="font-size:12.5px; color:var(--muted); background:var(--bg); border-radius:10px; padding:16px; line-height:1.6;">
+        <i class=ic-clock></i> Ainda não há histórico suficiente acumulado (pro filtro atual). O dash já está registrando, a partir de hoje, quanto tempo cada pendência leva até ser resolvida — assim que houver dado o bastante, essa área passa a mostrar a média por executivo e a comparação com o período anterior automaticamente, sem precisar de nada novo.
+      </div>`;
+    } else {
+      const byGestor = {};
+      slaHistFiltrado.forEach(h => { (byGestor[h.gestor] = byGestor[h.gestor] || []).push(h.duracaoDU); });
+      const macroRows = Object.keys(byGestor).sort((a,b)=>{
+        const ma = byGestor[a].reduce((s,v)=>s+v,0)/byGestor[a].length;
+        const mb = byGestor[b].reduce((s,v)=>s+v,0)/byGestor[b].length;
+        return ma-mb;
+      });
+      macroBody.innerHTML = `<div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">${slaHistFiltrado.length} pendência${slaHistFiltrado.length>1?'s':''} resolvida${slaHistFiltrado.length>1?'s':''} registrada${slaHistFiltrado.length>1?'s':''} desde que começamos a acompanhar.</div>` +
+        macroRows.map(g => {
+          const arr = byGestor[g];
+          const media = Math.round(arr.reduce((s,v)=>s+v,0)/arr.length);
+          return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); font-size:12.5px;">
+            <span style="color:var(--navy); font-weight:600;">${g}</span>
+            <span><b style="color:var(--navy);">${media}</b> dias úteis em média <span style="color:var(--muted);">(${arr.length} resolvida${arr.length>1?'s':''})</span></span>
+          </div>`;
+        }).join('');
+    }
+  };
+
+  // Detalhe por executivo (clique num card da aba Conversão) — tabela + gráficos batendo
+  // com as mesmas colunas que a planilha "Crescimento Geral" do sênior acompanha:
+  // Assinatura, Funil e Ranking, sempre ontem × hoje.
+  let convDetailCharts = {};
+  window.openConversaoDetail = function(gestor){
+    const isAtiva = st => /pend|analis/i.test(String(st||''));
+    const isImplantada = st => /implant/i.test(String(st||''));
+    const fmt0d = n => Math.round(n||0).toLocaleString('pt-BR');
+    const cresc = (h,o) => (o===undefined||o===null||o===0) ? null : Math.round((h-o)/o*100);
+
+    const assinaturaData = (window.getPendenciasData ? window.getPendenciasData().assinatura : {}) || {};
+    const ps = PROPOSTAS.filter(p=>p.g===gestor);
+    const ativas = ps.filter(p=>isAtiva(p.st));
+    const implantadas = ps.filter(p=>isImplantada(p.st));
+    const funilHoje = ativas.reduce((s,p)=>s+(p.bn||0),0);
+    const assinHoje = (assinaturaData[gestor]||[]).reduce((s,r)=>s+(r.beneficiarios||0),0);
+    const rankingHoje = (RANKDATA||[]).filter(r=>r.g===gestor).reduce((s,r)=>s+(r.cur||0),0);
+    const ontemSnap = (getYesterdaySnapshot() || {})[gestor] || null;
+
+    document.getElementById('convDetailAvatar').textContent = gestor.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
+    document.getElementById('convDetailName').textContent = gestor;
+    document.getElementById('convDetailEquipe').textContent = GESTOR_EQUIPE[gestor] ? 'Equipe ' + GESTOR_EQUIPE[gestor] : 'Sem equipe cadastrada';
+
+    const linhas = [
+      {label:'Aguardando Assinatura', ontem: ontemSnap ? ontemSnap.assinatura : null, hoje: assinHoje},
+      {label:'Funil (análise + pendência)', ontem: ontemSnap ? ontemSnap.funilAtivo : null, hoje: funilHoje},
+      {label:'Ranking (volume de vendas)', ontem: ontemSnap ? ontemSnap.ranking : null, hoje: rankingHoje},
+      {label:'Propostas implantadas', ontem: ontemSnap ? ontemSnap.implantadas : null, hoje: implantadas.length},
+    ];
+    document.getElementById('convDetailTableBody').innerHTML = linhas.map(l => {
+      const c = l.ontem!==null ? cresc(l.hoje, l.ontem) : null;
+      const corC = c===null ? 'var(--muted)' : (c===0?'var(--muted)':(c>0?'var(--accent-mint)':'var(--accent-red)'));
+      return `<tr>
+        <td style="padding:9px 4px; font-size:12.5px; color:var(--muted); font-weight:600; border-bottom:1px solid var(--line);">${l.label}</td>
+        <td style="padding:9px 4px; text-align:right; font-size:12.5px; border-bottom:1px solid var(--line);">${l.ontem!==null?fmt0d(l.ontem):'—'}</td>
+        <td style="padding:9px 4px; text-align:right; font-size:12.5px; font-weight:700; color:var(--navy); border-bottom:1px solid var(--line);">${fmt0d(l.hoje)}</td>
+        <td style="padding:9px 4px; text-align:right; font-size:12.5px; font-weight:700; color:${corC}; border-bottom:1px solid var(--line);">${c===null?'—':(c>0?'▲':(c<0?'▼':'·'))+' '+Math.abs(c)+'%'}</td>
+      </tr>`;
+    }).join('');
+
+    if (convDetailCharts.bar) convDetailCharts.bar.destroy();
+    convDetailCharts.bar = new Chart(document.getElementById('convDetailChartBar'), {
+      type:'bar',
+      data:{ labels:['Assinatura','Funil','Ranking'],
+        datasets:[
+          {label:'Ontem', data:[ontemSnap?ontemSnap.assinatura:0, ontemSnap?ontemSnap.funilAtivo:0, ontemSnap?ontemSnap.ranking:0], backgroundColor:'#cbd5e1', borderRadius:6, barPercentage:.6},
+          {label:'Hoje', data:[assinHoje, funilHoje, rankingHoje], backgroundColor:'#2E52D4', borderRadius:6, barPercentage:.6},
+        ] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}}, scales:{y:{beginAtZero:true, grid:{color:'#eef1f6'}}} }
+    });
+
+    const statusCount = {};
+    ps.forEach(p => {
+      const st = String(p.st||'');
+      const k = isImplantada(st) ? 'Implantada' : (/pend/i.test(st) ? 'Pendência' : (/analis/i.test(st) ? 'Em análise' : (/devolv/i.test(st) ? 'Devolvida' : (/cancel/i.test(st) ? 'Cancelada' : 'Outros'))));
+      statusCount[k] = (statusCount[k]||0) + 1;
+    });
+    const statusColors = {Implantada:'#16B87A', Pendência:'#F26B21', 'Em análise':'#FFB81C', Devolvida:'#F5364A', Cancelada:'#8B93B8', Outros:'#94a3b8'};
+    const statusLabels = Object.keys(statusCount);
+    if (convDetailCharts.status) convDetailCharts.status.destroy();
+    convDetailCharts.status = new Chart(document.getElementById('convDetailChartStatus'), {
+      type:'doughnut',
+      data:{ labels: statusLabels, datasets:[{ data: statusLabels.map(l=>statusCount[l]), backgroundColor: statusLabels.map(l=>statusColors[l]||'#94a3b8') }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right', labels:{boxWidth:11,font:{size:10.5}}}} }
+    });
+
+    document.getElementById('convDetailPendBtn').onclick = () => { document.getElementById('convDetailOverlay').style.display='none'; window.showPendenciasModal(gestor); };
+    document.getElementById('convDetailOverlay').style.display = 'flex';
+  };
+  document.getElementById('btnCloseConvDetail').addEventListener('click', () => { document.getElementById('convDetailOverlay').style.display='none'; });
+  document.getElementById('convDetailOverlay').addEventListener('click', (e) => { if (e.target.id === 'convDetailOverlay') e.currentTarget.style.display='none'; });
+
+  // Lista de "Aguardando Assinatura" de um executivo — não existia tela nenhuma pra isso
+  // antes (só o número agregado). Clique no número do card leva direto pra cá.
+  window.openAssinaturaList = function(gestor){
+    const assinaturaData = (window.getPendenciasData ? window.getPendenciasData().assinatura : {}) || {};
+    const rows = (assinaturaData[gestor] || []).slice().sort((a,b) => (b.dataCriacao||'').localeCompare(a.dataCriacao||''));
+    document.getElementById('convAssinGestor').textContent = gestor;
+    const total = rows.reduce((s,r)=>s+(r.beneficiarios||0),0);
+    document.getElementById('convAssinSub').textContent = `${rows.length} contrato${rows.length!==1?'s':''} · ${total} vida${total!==1?'s':''} aguardando assinatura`;
+    const motivoLabel = alvo => alvo==='cliente' ? 'Cliente' : (alvo==='decsau' ? 'Declaração de saúde' : (alvo || '—'));
+    document.getElementById('convAssinBody').innerHTML = rows.length ? rows.map(r => `<tr>
+        <td>${r.contratante||'—'}</td><td>${r.corretora||'—'}</td>
+        <td>${motivoLabel(r.alvo)}</td>
+        <td class="num">${r.beneficiarios||0}</td>
+        <td>${r.dataCriacao ? r.dataCriacao.split('-').reverse().join('/') : '—'}</td>
+      </tr>`).join('') : '<tr><td colspan="5" style="text-align:center; color:var(--muted); padding:20px;">Nenhum registro.</td></tr>';
+    document.getElementById('convAssinOverlay').style.display = 'flex';
+  };
+  document.getElementById('btnCloseConvAssin').addEventListener('click', () => { document.getElementById('convAssinOverlay').style.display='none'; });
+  document.getElementById('convAssinOverlay').addEventListener('click', (e) => { if (e.target.id === 'convAssinOverlay') e.currentTarget.style.display='none'; });
   window.getRankLabels = () => ({cur: RANK_CUR_LABEL, prev: RANK_PREV_LABEL});
   window.updateRankingData = function(curList, prevList, detectedMonth){
     // Antes RANK_CUR_LABEL/RANK_PREV_LABEL ("Julho/26" etc.) nunca mudavam depois da carga
@@ -5796,6 +6228,11 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:10px;border-top:2px solid 
 
   const iniciais = nome => nome.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
   const TEAM_PALETTE = ['#2E52D4','#F26B21','#101E63','#16B87A','#FFB81C'];
+  // #101E63 é um azul-marinho quase preto — ótimo como FUNDO de avatar/barra (com texto branco em
+  // cima), mas ilegível quando essa mesma cor é usada como COR DE TEXTO no modo escuro (ex.: o
+  // percentual grande do Confronto Head-to-Head). Só nos usos de texto, troca pela versão clara
+  // já usada pro mesmo problema em outras partes do painel (--primary-dark no modo escuro).
+  const corTexto = hex => (document.documentElement.getAttribute('data-theme') === 'dark' && hex === '#101E63') ? '#8FA6F5' : hex;
 
   function getEntityData(mjData, value){
     const type = value.split(':')[0], name = value.slice(value.indexOf(':')+1);
@@ -5900,7 +6337,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         ? `${cmpCurMonthLabel()} · ${E.corretorasCount||0} corretora${(E.corretorasCount||0)===1?'':'s'} · ${Math.round(E.elegPct||0)}% elegíveis`
         : (E.isCorretora ? (cmpLabels().cur + ' · ' + fmt0(E.total.meta) + ' em ' + cmpLabels().prev) : (fmt0(E.total.int) + ' / ' + fmt0(E.total.meta) + ' vidas (meta total)'));
       return `<div class="gestor-card"><div class="avatar" style="background:${E.cor}">${iniciais(E.label)}</div><div class="name">${E.label}</div><div class="role">${E.role}</div>
-        <div class="total-pct" style="color:${raw ? E.cor : pctColor(p)}">${raw ? fmt0(E.total.int) : pctf(p)}</div>
+        <div class="total-pct" style="color:${raw ? corTexto(E.cor) : pctColor(p)}">${raw ? fmt0(E.total.int) : pctf(p)}</div>
         <div class="total-label">${totalLabel}</div>${catsHtml}</div>`;
     }
     document.getElementById('cmpCardsGrid').innerHTML = entityCard(A) + entityCard(B);
@@ -5933,7 +6370,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         <div class="vs-avatar" style="background:${A.cor}">${iniciais(A.label)}</div>
         <div class="vs-name">${A.label}</div>
         <div class="vs-role">${A.role}</div>
-        <div class="vs-bigpct" style="color:${A.cor}">${isRaw ? fmt0(A.total.int) : pctf(pA)}</div>
+        <div class="vs-bigpct" style="color:${corTexto(A.cor)}">${isRaw ? fmt0(A.total.int) : pctf(pA)}</div>
         <div class="vs-vidas">${vsSubtitle(A)}</div>
         ${tagA}
       </div>
@@ -5942,7 +6379,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         <div class="vs-avatar" style="background:${B.cor}">${iniciais(B.label)}</div>
         <div class="vs-name">${B.label}</div>
         <div class="vs-role">${B.role}</div>
-        <div class="vs-bigpct" style="color:${B.cor}">${isRaw ? fmt0(B.total.int) : pctf(pB)}</div>
+        <div class="vs-bigpct" style="color:${corTexto(B.cor)}">${isRaw ? fmt0(B.total.int) : pctf(pB)}</div>
         <div class="vs-vidas">${vsSubtitle(B)}</div>
         ${tagB}
       </div>`;
@@ -5957,8 +6394,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       const winner = Math.abs(paK-pbK) < 0.001 ? null : (paK > pbK ? 'A' : 'B');
       const barPct = p => Math.min(p*100, 100).toFixed(1);
       const badge = p => (!isRaw && p > 1) ? `<span class="cb-badge">+${Math.round((p-1)*100)}%</span>` : '';
-      const winLabel = winner==='A' ? `<span class="cb-win" style="color:${A.cor}">◀ ${shortName(A.label)}</span>`
-        : winner==='B' ? `<span class="cb-win" style="color:${B.cor}">${shortName(B.label)} ▶</span>`
+      const winLabel = winner==='A' ? `<span class="cb-win" style="color:${corTexto(A.cor)}">◀ ${shortName(A.label)}</span>`
+        : winner==='B' ? `<span class="cb-win" style="color:${corTexto(B.cor)}">${shortName(B.label)} ▶</span>`
         : `<span class="cb-win" style="color:var(--muted)">empate</span>`;
       return `<div class="cat-battle-row">
         <div class="cb-side l">
@@ -6366,7 +6803,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     return html;
   }
 
-  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null, pendingPropostas = null;
+  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null, pendingPropostas = null, pendingAssinatura = null;
   let pendingRankCur = null, pendingRankPrev = null;
 
   // Gestores da equipe do Rio (excluídos do ranking de SP)
@@ -6699,7 +7136,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const idx = name => header.indexOf(name);
     const iProp = idx('oper_propnum'), iCn = idx('contratante_cnpj'), iEm = idx('contratante_nome'),
           iVg = idx('date_vigencia'), iSt = idx('status'), iBn = idx('beneficiarios'),
-          iVd = idx('vendedor_nome'), iCo = idx('corretora_nome');
+          iVd = idx('vendedor_nome'), iCo = idx('corretora_nome'), iGe = idx('GESTOR'), iDr = idx('DATA RECEBIMENTO');
     if ([iProp,iEm,iVg,iSt,iBn,iCo].some(i=>i<0)) throw new Error('A aba "PLANIUM" não tem as colunas esperadas (oper_propnum, contratante_nome, date_vigencia, status, beneficiarios, corretora_nome).');
     const fmtCnpj = v => {
       if (v === null || v === undefined || v === '') return '';
@@ -6715,6 +7152,10 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         p: String(p), cn: fmtCnpj(row[iCn]), em: String(row[iEm]||''),
         vg: excelDateToStr(row[iVg]), st: String(row[iSt]||'').trim(),
         bn: num(row[iBn]), vd: String(row[iVd]||''), co: String(co).trim(),
+        // Campos novos (SLA/Conversão por executivo) — opcionais, não quebram nada que já
+        // consumia esse array antes deles existirem.
+        g: iGe>=0 ? String(row[iGe]||'').trim() : '',
+        dr: iDr>=0 ? excelDateToStr(row[iDr]) : '',
       });
     }
     if (!propostas.length) throw new Error('Nenhuma proposta reconhecida na aba "PLANIUM".');
@@ -6780,6 +7221,53 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     return { data };
   }
 
+  // "datacriacao" vem como texto "dd/mm/aaaa hh:mm" (não é data real do Excel, é string
+  // crua do export) — excelDateToStr sozinha não dá conta desse formato (ela só reconhece
+  // Date/serial/"aaaa-mm-dd..."), por isso um conversor à parte aqui.
+  function assinaturaDateToStr(v){
+    if (v === null || v === undefined || v === '') return '';
+    if (v instanceof Date) return v.toISOString().slice(0,10);
+    if (typeof v === 'number'){
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+      return d.toISOString().slice(0,10);
+    }
+    const s = String(v).trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return s.slice(0,10);
+  }
+  function parseAssinaturaWorkbook(workbook){
+    const sheet = findSheet(workbook, 'stats_export_gndi');
+    if (!sheet) throw new Error('Não encontrei a aba "stats_export_gndi..." no arquivo de Aguardando Assinatura.');
+    const rows = sheetRows(sheet);
+    const header = (rows[0]||[]).map(h => String(h||'').trim());
+    const idx = name => header.indexOf(name);
+    const iAlvo = idx('alvo'), iGestor = idx('GESTOR'), iCorretora = idx('CORRETORA'),
+          iData = idx('datacriacao'), iBenef = idx('beneficiarios'), iContratante = idx('contratante_nome');
+    if ([iAlvo,iGestor].some(i=>i<0)) throw new Error('A aba não tem as colunas esperadas ("alvo", "GESTOR") — confirme que já rodou o cruzamento de GESTOR/CORRETORA antes de subir este arquivo.');
+    const data = {};
+    for (let i = 1; i < rows.length; i++){
+      const row = rows[i] || [];
+      const gestorRaw = row[iGestor];
+      if (!gestorRaw) continue;
+      const gestor = String(gestorRaw).trim();
+      (data[gestor] = data[gestor] || []).push({
+        alvo: String(row[iAlvo]||'').trim(),
+        corretora: iCorretora>=0 ? String(row[iCorretora]||'').trim() : '',
+        contratante: iContratante>=0 ? String(row[iContratante]||'').trim() : '',
+        dataCriacao: iData>=0 ? assinaturaDateToStr(row[iData]) : '',
+        beneficiarios: iBenef>=0 ? num(row[iBenef]) : 1,
+      });
+    }
+    if (Object.keys(data).length === 0) throw new Error('Nenhum registro de "aguardando assinatura" reconhecido no arquivo.');
+    return { data };
+  }
+  function diffAssinatura(parsed){
+    const totalReg = Object.values(parsed.data).reduce((s,arr)=>s+arr.length,0);
+    let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-clip></i> Aguardando Assinatura — Resumo</h3>';
+    html += `<div style="font-size:12.5px;line-height:1.8;"><div><b>${totalReg}</b> contratos aguardando assinatura, em <b>${Object.keys(parsed.data).length}</b> gestores.</div></div>`;
+    return html;
+  }
   function diffPendPme(parsed){
     const totalPend = Object.values(parsed.data).reduce((s,arr)=>s+arr.length,0);
     let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-clip></i> Pendências PME/SS — Resumo</h3>';
@@ -6812,7 +7300,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   }
 
   // Botões "remover" + estado visual dos campos de arquivo
-  const IMPORT_FILE_IDS = ['fileMetaJunho','fileElegibilidade','fileCarteira','filePendPme','filePendPf','fileRankPrev'];
+  const IMPORT_FILE_IDS = ['fileMetaJunho','fileElegibilidade','fileCarteira','filePendPme','filePendPf','fileAssinatura','fileRankPrev'];
   function syncFileFieldState(id){
     const input = document.getElementById(id);
     const field = input.closest('.file-field');
@@ -6855,7 +7343,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     document.getElementById('filePendPme').value = '';
     document.getElementById('filePendPf').value = '';
     IMPORT_FILE_IDS.forEach(id => { const f = document.getElementById(id).closest('.file-field'); if (f) f.classList.remove('has-file'); });
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null;
   }
 
   document.getElementById('btnOpenImport').addEventListener('click', () => {
@@ -6876,8 +7364,9 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const carteiraFile = document.getElementById('fileCarteira').files[0];
     const pendPmeFile = document.getElementById('filePendPme').files[0];
     const pendPfFile = document.getElementById('filePendPf').files[0];
+    const assinaturaFile = document.getElementById('fileAssinatura').files[0];
     const rankPrevFile = document.getElementById('fileRankPrev').files[0];
-    if (!metaFile && !eligFile && !carteiraFile && !pendPmeFile && !pendPfFile && !rankPrevFile){
+    if (!metaFile && !eligFile && !carteiraFile && !pendPmeFile && !pendPfFile && !assinaturaFile && !rankPrevFile){
       statusEl.innerHTML = '<p style="color:var(--red);font-size:12.5px;">Selecione ao menos um arquivo.</p>';
       return;
     }
@@ -6887,7 +7376,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     btn.style.cursor = 'default';
     btn.innerHTML = '<span class="spinner"></span> Processando...';
     summaryEl.style.display = 'none';
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null;
     let summaryHtml = '';
     try {
       // ---- AUTO-DETECÇÃO: roteia cada arquivo pelo conteúdo, não pelo campo ----
@@ -6985,6 +7474,12 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         pendingPendPf = parsePfPendenciasWorkbook(wb);
         summaryHtml += diffPendPf(pendingPendPf);
       }
+      if (assinaturaFile){
+        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Aguardando Assinatura...</p>';
+        const wb = await readFileAsWorkbook(assinaturaFile);
+        pendingAssinatura = parseAssinaturaWorkbook(wb);
+        summaryHtml += diffAssinatura(pendingAssinatura);
+      }
       if (rankPrevFile){
         statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Ranking — mês anterior...</p>';
         const wb = await readFileAsWorkbook(rankPrevFile);
@@ -7031,6 +7526,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       });
     }
     if (pendingPropostas && window.updatePropostasData) window.updatePropostasData(pendingPropostas);
+    if (pendingAssinatura && window.updateAssinaturaData) window.updateAssinaturaData(pendingAssinatura.data);
+    if ((pendingPropostas || pendingAssinatura) && window.saveDailySnapshot) window.saveDailySnapshot();
     const ts = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
     const el = document.getElementById('sidebarUpdatedAt'); if (el) el.textContent = ts;
     if (window.renderOverview) window.renderOverview();
@@ -7067,12 +7564,15 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       currentMonth: st.currentMonth,
       PENDENCIAS_PME: st.PENDENCIAS_PME,
       PENDENCIAS_PF: st.PENDENCIAS_PF,
+      PENDENCIAS_ASSINATURA: st.PENDENCIAS_ASSINATURA,
       MJ_CORRETORAS: st.MJ_CORRETORAS,
       MJ_NAO_ATRIBUIDO_BY_MONTH: st.MJ_NAO_ATRIBUIDO_BY_MONTH,
       MJ_BENCHMARK: st.MJ_BENCHMARK,
       DATA: window.getEligibilidadeData ? window.getEligibilidadeData() : [],
       RANKDATA: window.getRankData ? window.getRankData() : [],
       PROPOSTAS: window.getPropostasData ? window.getPropostasData() : [],
+      SLA_HISTORICO: window.getSlaHistorico ? window.getSlaHistorico() : [],
+      DAILY_SNAPSHOTS: window.getDailySnapshots ? window.getDailySnapshots() : {},
       RANK_CUR_LABEL: window.getRankLabels ? window.getRankLabels().cur : 'Mês atual',
       RANK_PREV_LABEL: window.getRankLabels ? window.getRankLabels().prev : 'Mês anterior',
       // Grava o momento da publicação DENTRO do data.json — antes esse "Última atualização"
