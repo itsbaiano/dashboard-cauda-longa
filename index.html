@@ -1184,6 +1184,11 @@
             <div class="file-field"><input type="file" id="fileAssinatura" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileAssinatura" title="Remover arquivo">✕ remover</button></div>
           </div>
           <div style="font-size:11px; color:var(--muted); margin-bottom:16px;">O relatório "stats_export_gndi" já com as colunas GESTOR e CORRETORA preenchidas (o mesmo VLOOKUP que você já faz hoje).</div>
+          <div class="f-group" style="margin-bottom:4px;">
+            <label>Crescimento Geral (ontem × hoje da Conversão)</label>
+            <div class="file-field"><input type="file" id="fileCrescimentoGeral" accept=".xlsx" style="font-size:12.5px;"><button type="button" class="file-clear" data-target="fileCrescimentoGeral" title="Remover arquivo">✕ remover</button></div>
+          </div>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:16px;">A planilha "CRESCIMENTO GERAL" do sênior (aba GERAL) — alimenta os cartões "ontem → hoje" da aba Conversão com os números oficiais do dia, em vez de comparar com a última vez que o dashboard foi atualizado.</div>
           <div style="border-top:1px solid var(--line); padding-top:14px;">
             <div style="font-size:12px; font-weight:800; color:var(--navy); margin-bottom:4px;">Ranking de Vendas — mês anterior</div>
             <div style="font-size:11px; color:var(--muted); margin-bottom:12px;">O mês atual do ranking vem do arquivo principal lá em cima (o mesmo "NDI SP - Por Gestor"). Aqui você só troca o <b>mês anterior</b>, quando virar o mês.</div>
@@ -2070,8 +2075,8 @@
     </div>
 
     <div class="panel" id="convMacroPanel">
-      <h2>Visão Trimestral / Semestral</h2>
-      <div class="panel-sub">Tempo médio até resolver uma pendência, comparado ao período anterior</div>
+      <h2>Histórico de SLA — dia a dia</h2>
+      <div class="panel-sub">Quanto tempo levou pra resolver cada pendência, agrupado por dia — cresce sozinho a cada vez que você atualiza os dados</div>
       <div id="convMacroBody" style="margin-top:14px;"></div>
     </div>
   </div>
@@ -3314,6 +3319,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   // resolvida), aqui é só o total do dia, pra bater com o jeito que a planilha "Crescimento
   // Geral" do sênior compara ontem x hoje.
   let DAILY_SNAPSHOTS = window.__DASH_DATA__.DAILY_SNAPSHOTS || {};
+  // "Ontem x hoje" oficial da aba Conversão — vem direto do relatório "Crescimento Geral"
+  // que o sênior já preenche todo dia (colunas ASSINATURA/FUNIL/RANKING ONTEM e HOJE).
+  // Substitui o DAILY_SNAPSHOTS acima pra esse fim específico: o snapshot automático só
+  // funcionava se o dashboard fosse atualizado em dois dias-calendário diferentes, e
+  // comparava um "ontem" congelado com um "hoje" ao vivo — números de fontes diferentes,
+  // que raramente batiam com o que a planilha do sênior mostrava. Aqui os dois lados
+  // (ontem E hoje) vêm sempre da mesma importação, então nunca desencontram.
+  let CONV_ONTEM_HOJE = window.__DASH_DATA__.CONV_ONTEM_HOJE || {};
   function computeGestorSnapshotNow(){
     const assinaturaData = (window.getPendenciasData ? window.getPendenciasData().assinatura : {}) || {};
     const rankByGestor = {};
@@ -5534,6 +5547,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
   window.getSlaHistorico = () => SLA_HISTORICO;
   window.getDailySnapshots = () => DAILY_SNAPSHOTS;
   window.saveDailySnapshot = saveDailySnapshot;
+  window.getConvOntemHoje = () => CONV_ONTEM_HOJE;
+  window.updateConvOntemHoje = function(newData){
+    Object.keys(newData||{}).forEach(g => { CONV_ONTEM_HOJE[g] = newData[g]; });
+  };
 
   // ══════════════════════════════════════════════════════════════
   // ABA CONVERSÃO — SLA (aging), Aguardando Assinatura e % Conversão
@@ -5578,7 +5595,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     }).sort();
     document.getElementById('convCount').textContent = gestores.length + (gestores.length===1 ? ' gestor' : ' gestores');
 
-    const ontem = getYesterdaySnapshot() || {};
+    const convReport = (window.getConvOntemHoje ? window.getConvOntemHoje() : {}) || {};
     const cresce = (hoje, ant) => (ant===undefined || ant===null || ant===0) ? null : Math.round((hoje-ant)/ant*100);
 
     const rows = gestores.map(g => {
@@ -5592,12 +5609,16 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       const assinRows = assinaturaData[g] || [];
       const assinTotal = assinRows.reduce((s,r)=>s+(r.beneficiarios||0),0);
       const ativasVidas = ativas.reduce((s,p)=>s+(p.bn||0),0);
-      const y = ontem[g] || null;
+      // Ontem→hoje só aparece quando o "Crescimento Geral" já foi importado pra esse gestor —
+      // os dois lados (ontem E hoje) vêm sempre da mesma planilha, nunca misturando com o
+      // dado ao vivo do PROPOSTAS (que é de outra fonte e atualiza em outro ritmo).
+      const cg = convReport[g] || null;
       return { gestor:g, total:ps.length, ativasCount: ativas.length,
         ativasVidas, criticos, atrasoMedio, conv, assinTotal,
-        funilOntem: y ? y.funilAtivo : null, assinOntem: y ? y.assinatura : null,
-        cresFunil: y ? cresce(ativasVidas, y.funilAtivo) : null,
-        cresAssin: y ? cresce(assinTotal, y.assinatura) : null };
+        funilOntem: cg ? cg.funilOntem : null, funilHojeReport: cg ? cg.funilHoje : null,
+        assinOntem: cg ? cg.assinaturaOntem : null, assinHojeReport: cg ? cg.assinaturaHoje : null,
+        cresFunil: cg ? cresce(cg.funilHoje, cg.funilOntem) : null,
+        cresAssin: cg ? cresce(cg.assinaturaHoje, cg.assinaturaOntem) : null };
     }).filter(r => r.total>0 || r.assinTotal>0).sort((a,b)=> b.total - a.total);
 
     const totalPropostas = rows.reduce((s,r)=>s+r.total,0);
@@ -5620,7 +5641,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // Seta de crescimento — pra Funil e Assinatura, MENOS é melhor (menos gente parada),
     // por isso a cor é invertida em relação ao sentido comum de "subiu = verde".
     const cresLabel = (pct) => {
-      if (pct===null) return '<span style="color:var(--muted); font-size:11px;">sem dado de ontem</span>';
+      if (pct===null) return '<span style="color:var(--muted); font-size:11px;">importe o Crescimento Geral</span>';
       const cor = pct===0 ? 'var(--muted)' : (pct>0 ? 'var(--accent-red)' : 'var(--accent-mint)');
       const seta = pct===0 ? '·' : (pct>0 ? '▲' : '▼');
       return `<span style="color:${cor}; font-weight:700; font-size:11px;">${seta} ${Math.abs(pct)}% vs ontem</span>`;
@@ -5642,8 +5663,8 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
           <div onclick="${go('openConversaoDetail',g)}" style="cursor:pointer;" title="Ver detalhe de ${g}"><div class="rc-label">% Conversão</div><div class="rc-value" style="font-size:15px; color:${r.conv!==null && r.conv>=70?'var(--accent-mint)':'var(--navy)'};">${r.conv!==null ? r.conv+'%' : '—'}</div></div>
         </div>
         <div style="display:flex; justify-content:space-between; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid var(--line);">
-          <div onclick="${go('openConversaoDetail',g)}" style="cursor:pointer;" title="Ver detalhe de ${g}"><div class="rc-label">Funil ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.funilOntem!==null ? fmt0c(r.funilOntem)+' → '+fmt0c(r.ativasVidas) : '—'}</div>${cresLabel(r.cresFunil)}</div>
-          <div onclick="${go('openAssinaturaList',g)}" style="cursor:pointer; text-align:right;" title="Ver lista de assinaturas de ${g}"><div class="rc-label">Assinatura ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.assinOntem!==null ? fmt0c(r.assinOntem)+' → '+fmt0c(r.assinTotal) : '—'}</div>${cresLabel(r.cresAssin)}</div>
+          <div onclick="${go('openConversaoDetail',g)}" style="cursor:pointer;" title="Ver detalhe de ${g}"><div class="rc-label">Funil ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.funilOntem!==null ? fmt0c(r.funilOntem)+' → '+fmt0c(r.funilHojeReport) : '—'}</div>${cresLabel(r.cresFunil)}</div>
+          <div onclick="${go('openAssinaturaList',g)}" style="cursor:pointer; text-align:right;" title="Ver lista de assinaturas de ${g}"><div class="rc-label">Assinatura ontem→hoje</div><div style="font-size:12px; color:var(--navy);">${r.assinOntem!==null ? fmt0c(r.assinOntem)+' → '+fmt0c(r.assinHojeReport) : '—'}</div>${cresLabel(r.cresAssin)}</div>
         </div>
       </div>`; }).join('');
 
@@ -5652,23 +5673,35 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const slaHistFiltrado = SLA_HISTORICO.filter(h => gestoresSet.has(h.gestor));
     if (!slaHistFiltrado.length){
       macroBody.innerHTML = `<div style="font-size:12.5px; color:var(--muted); background:var(--bg); border-radius:10px; padding:16px; line-height:1.6;">
-        <i class=ic-clock></i> Ainda não há histórico suficiente acumulado (pro filtro atual). O dash já está registrando, a partir de hoje, quanto tempo cada pendência leva até ser resolvida — assim que houver dado o bastante, essa área passa a mostrar a média por executivo e a comparação com o período anterior automaticamente, sem precisar de nada novo.
+        <i class=ic-clock></i> Ainda não há nenhuma pendência resolvida registrada (pro filtro atual). Toda vez que você atualizar o PME/Planium e alguma pendência sumir da lista de ativas, o dia dela aparece aqui — não precisa esperar nada além de continuar atualizando os dados normalmente.
       </div>`;
     } else {
-      const byGestor = {};
-      slaHistFiltrado.forEach(h => { (byGestor[h.gestor] = byGestor[h.gestor] || []).push(h.duracaoDU); });
-      const macroRows = Object.keys(byGestor).sort((a,b)=>{
-        const ma = byGestor[a].reduce((s,v)=>s+v,0)/byGestor[a].length;
-        const mb = byGestor[b].reduce((s,v)=>s+v,0)/byGestor[b].length;
-        return ma-mb;
-      });
-      macroBody.innerHTML = `<div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">${slaHistFiltrado.length} pendência${slaHistFiltrado.length>1?'s':''} resolvida${slaHistFiltrado.length>1?'s':''} registrada${slaHistFiltrado.length>1?'s':''} desde que começamos a acompanhar.</div>` +
-        macroRows.map(g => {
-          const arr = byGestor[g];
-          const media = Math.round(arr.reduce((s,v)=>s+v,0)/arr.length);
-          return `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); font-size:12.5px;">
-            <span style="color:var(--navy); font-weight:600;">${g}</span>
-            <span><b style="color:var(--navy);">${media}</b> dias úteis em média <span style="color:var(--muted);">(${arr.length} resolvida${arr.length>1?'s':''})</span></span>
+      // Agrupado por dia de resolução (mais recente primeiro) — assim o painel já fica útil
+      // desde o primeiro dia com dado, em vez de esperar um trimestre inteiro acumular pra
+      // mostrar alguma coisa. Trimestre/semestre viram, na prática, só "mais linhas aqui em
+      // baixo" conforme o tempo passa, sem precisar de nenhuma lógica extra de período.
+      const byDay = {};
+      slaHistFiltrado.forEach(h => { (byDay[h.dataResolucao] = byDay[h.dataResolucao] || []).push(h); });
+      const dias = Object.keys(byDay).sort().reverse();
+      const totalGeral = slaHistFiltrado.length;
+      const mediaGeral = Math.round(slaHistFiltrado.reduce((s,h)=>s+h.duracaoDU,0)/totalGeral);
+      macroBody.innerHTML = `<div style="font-size:11.5px; color:var(--muted); margin-bottom:10px;">${totalGeral} pendência${totalGeral>1?'s':''} resolvida${totalGeral>1?'s':''} desde que começamos a acompanhar · média geral: <b style="color:var(--navy);">${mediaGeral} dias úteis</b></div>` +
+        dias.map(dia => {
+          const arr = byDay[dia];
+          const mediaDia = Math.round(arr.reduce((s,h)=>s+h.duracaoDU,0)/arr.length);
+          const porGestor = {};
+          arr.forEach(h => { (porGestor[h.gestor] = porGestor[h.gestor] || []).push(h.duracaoDU); });
+          const gestorLine = Object.keys(porGestor).sort().map(g => {
+            const vals = porGestor[g];
+            const m = Math.round(vals.reduce((s,v)=>s+v,0)/vals.length);
+            return `<span style="margin-right:16px; display:inline-block; margin-top:2px;">${g}: <b style="color:var(--navy);">${m}d</b> <span style="color:var(--muted);">(${vals.length})</span></span>`;
+          }).join('');
+          return `<div style="padding:10px 0; border-bottom:1px solid var(--line); font-size:12.5px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <span style="color:var(--navy); font-weight:700;">${dia.split('-').reverse().join('/')}</span>
+              <span style="color:var(--muted);">${arr.length} resolvida${arr.length>1?'s':''} · média ${mediaDia}d</span>
+            </div>
+            <div style="color:var(--muted);">${gestorLine}</div>
           </div>`;
         }).join('');
     }
@@ -5691,17 +5724,20 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const funilHoje = ativas.reduce((s,p)=>s+(p.bn||0),0);
     const assinHoje = (assinaturaData[gestor]||[]).reduce((s,r)=>s+(r.beneficiarios||0),0);
     const rankingHoje = (RANKDATA||[]).filter(r=>r.g===gestor).reduce((s,r)=>s+(r.cur||0),0);
-    const ontemSnap = (getYesterdaySnapshot() || {})[gestor] || null;
+    // Mesma fonte pros dois lados (ontem e hoje): quando o "Crescimento Geral" já foi
+    // importado pra esse gestor, os dois números vêm dele — nunca mistura com o dado ao
+    // vivo do PROPOSTAS, que teria outro ritmo de atualização e não bateria.
+    const cgData = (window.getConvOntemHoje ? window.getConvOntemHoje() : {})[gestor] || null;
 
     document.getElementById('convDetailAvatar').textContent = gestor.trim().split(/\s+/).map(p=>p[0]).slice(0,2).join('').toUpperCase();
     document.getElementById('convDetailName').textContent = gestor;
     document.getElementById('convDetailEquipe').textContent = GESTOR_EQUIPE[gestor] ? 'Equipe ' + GESTOR_EQUIPE[gestor] : 'Sem equipe cadastrada';
 
     const linhas = [
-      {label:'Aguardando Assinatura', ontem: ontemSnap ? ontemSnap.assinatura : null, hoje: assinHoje},
-      {label:'Funil (análise + pendência)', ontem: ontemSnap ? ontemSnap.funilAtivo : null, hoje: funilHoje},
-      {label:'Ranking (volume de vendas)', ontem: ontemSnap ? ontemSnap.ranking : null, hoje: rankingHoje},
-      {label:'Propostas implantadas', ontem: ontemSnap ? ontemSnap.implantadas : null, hoje: implantadas.length},
+      {label:'Aguardando Assinatura', ontem: cgData ? cgData.assinaturaOntem : null, hoje: cgData ? cgData.assinaturaHoje : assinHoje},
+      {label:'Funil (análise + pendência)', ontem: cgData ? cgData.funilOntem : null, hoje: cgData ? cgData.funilHoje : funilHoje},
+      {label:'Ranking (volume de vendas)', ontem: cgData ? cgData.rankingOntem : null, hoje: cgData ? cgData.rankingHoje : rankingHoje},
+      {label:'Propostas implantadas', ontem: null, hoje: implantadas.length},
     ];
     document.getElementById('convDetailTableBody').innerHTML = linhas.map(l => {
       const c = l.ontem!==null ? cresc(l.hoje, l.ontem) : null;
@@ -5719,8 +5755,8 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       type:'bar',
       data:{ labels:['Assinatura','Funil','Ranking'],
         datasets:[
-          {label:'Ontem', data:[ontemSnap?ontemSnap.assinatura:0, ontemSnap?ontemSnap.funilAtivo:0, ontemSnap?ontemSnap.ranking:0], backgroundColor:'#cbd5e1', borderRadius:6, barPercentage:.6},
-          {label:'Hoje', data:[assinHoje, funilHoje, rankingHoje], backgroundColor:'#2E52D4', borderRadius:6, barPercentage:.6},
+          {label:'Ontem', data:[cgData?cgData.assinaturaOntem:0, cgData?cgData.funilOntem:0, cgData?cgData.rankingOntem:0], backgroundColor:'#cbd5e1', borderRadius:6, barPercentage:.6},
+          {label:'Hoje', data:[cgData?cgData.assinaturaHoje:assinHoje, cgData?cgData.funilHoje:funilHoje, cgData?cgData.rankingHoje:rankingHoje], backgroundColor:'#2E52D4', borderRadius:6, barPercentage:.6},
         ] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12,font:{size:11}}}}, scales:{y:{beginAtZero:true, grid:{color:'#eef1f6'}}} }
     });
@@ -6911,7 +6947,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     return html;
   }
 
-  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null, pendingPropostas = null, pendingAssinatura = null;
+  let pendingMeta = null, pendingElig = null, pendingCarteira = null, pendingPendPme = null, pendingPendPf = null, pendingCorretorasRaw = null, pendingEligBridge = null, pendingPropostas = null, pendingAssinatura = null, pendingCrescimentoGeral = null;
   let pendingRankCur = null, pendingRankPrev = null;
 
   // Gestores da equipe do Rio (excluídos do ranking de SP)
@@ -7370,6 +7406,45 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     if (Object.keys(data).length === 0) throw new Error('Nenhum registro de "aguardando assinatura" reconhecido no arquivo.');
     return { data };
   }
+  // "CRESCIMENTO GERAL" (aba GERAL) — planilha que o sênior já preenche todo dia, com o
+  // ontem e o hoje reais de Assinatura/Funil/Ranking por gestor. Vira a fonte oficial do
+  // "ontem → hoje" da aba Conversão (ver CONV_ONTEM_HOJE), no lugar do snapshot automático.
+  // A aba tem um bloco por carteira (Plataforma/ABC/Cauda Longa/Digital); como só
+  // reconhecemos os 4 nomes da Cauda Longa, basta varrer a aba inteira sem se preocupar
+  // com em qual bloco cada linha está — o que não bate com um nome conhecido é ignorado.
+  // Guarda pelo nome EXATO da planilha (maiúsculo, nome completo) — é assim que PROPOSTAS.g
+  // já vem do relatório Planium, então bate direto sem precisar converter pra apelido curto.
+  const CG_KNOWN_NAMES = new Set([
+    'AGATHA EIKO RODRIGUES SAKAMOTO','PATRICIA PESSOA MONKS',
+    'JONATHAN LEAL DOS SANTOS SILVA','PABLO SERGIO RIBEIRO AMORA'
+  ]);
+  function parseCrescimentoGeralWorkbook(workbook){
+    const sheet = workbook.Sheets['GERAL'] || findSheet(workbook, 'GERAL');
+    if (!sheet) throw new Error('Não encontrei a aba "GERAL" no arquivo Crescimento Geral.');
+    const rows = sheetRows(sheet);
+    const data = {};
+    const naoReconhecidos = [];
+    for (let i = 0; i < rows.length; i++){
+      const row = rows[i] || [];
+      const nomeRaw = String(row[0]||'').trim();
+      // pula linhas em branco, cabeçalhos de carteira ("CARTEIRA X"), a linha de rótulos
+      // das colunas e as linhas de "TOTAL" — só sobram linhas de gestor de verdade.
+      if (!nomeRaw || nomeRaw.toUpperCase() === 'TOTAL' || nomeRaw.toUpperCase().indexOf('CARTEIRA') === 0) continue;
+      if (!CG_KNOWN_NAMES.has(nomeRaw.toUpperCase())){ naoReconhecidos.push(nomeRaw); continue; }
+      data[nomeRaw] = {
+        assinaturaOntem: num(row[2]), assinaturaHoje: num(row[3]),
+        funilOntem: num(row[5]), funilHoje: num(row[6]),
+        rankingOntem: num(row[8]), rankingHoje: num(row[9]),
+      };
+    }
+    if (Object.keys(data).length === 0) throw new Error('Nenhum gestor da Cauda Longa foi encontrado na aba "GERAL" (procurei pelos 4 nomes já cadastrados).');
+    return { data, naoReconhecidos };
+  }
+  function diffCrescimentoGeral(parsed){
+    let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-trend></i> Crescimento Geral — Resumo</h3>';
+    html += `<div style="font-size:12.5px;line-height:1.8;"><div>Ontem × hoje atualizado pra <b>${Object.keys(parsed.data).length}</b> gestor${Object.keys(parsed.data).length!==1?'es':''} da Cauda Longa.</div></div>`;
+    return html;
+  }
   function diffAssinatura(parsed){
     const totalReg = Object.values(parsed.data).reduce((s,arr)=>s+arr.length,0);
     let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-clip></i> Aguardando Assinatura — Resumo</h3>';
@@ -7408,7 +7483,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   }
 
   // Botões "remover" + estado visual dos campos de arquivo
-  const IMPORT_FILE_IDS = ['fileMetaJunho','fileElegibilidade','fileCarteira','filePendPme','filePendPf','fileAssinatura','fileRankPrev'];
+  const IMPORT_FILE_IDS = ['fileMetaJunho','fileElegibilidade','fileCarteira','filePendPme','filePendPf','fileAssinatura','fileCrescimentoGeral','fileRankPrev'];
   function syncFileFieldState(id){
     const input = document.getElementById(id);
     const field = input.closest('.file-field');
@@ -7451,7 +7526,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     document.getElementById('filePendPme').value = '';
     document.getElementById('filePendPf').value = '';
     IMPORT_FILE_IDS.forEach(id => { const f = document.getElementById(id).closest('.file-field'); if (f) f.classList.remove('has-file'); });
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null; pendingCrescimentoGeral = null;
   }
 
   document.getElementById('btnOpenImport').addEventListener('click', () => {
@@ -7473,8 +7548,9 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     const pendPmeFile = document.getElementById('filePendPme').files[0];
     const pendPfFile = document.getElementById('filePendPf').files[0];
     const assinaturaFile = document.getElementById('fileAssinatura').files[0];
+    const crescimentoGeralFile = document.getElementById('fileCrescimentoGeral').files[0];
     const rankPrevFile = document.getElementById('fileRankPrev').files[0];
-    if (!metaFile && !eligFile && !carteiraFile && !pendPmeFile && !pendPfFile && !assinaturaFile && !rankPrevFile){
+    if (!metaFile && !eligFile && !carteiraFile && !pendPmeFile && !pendPfFile && !assinaturaFile && !crescimentoGeralFile && !rankPrevFile){
       statusEl.innerHTML = '<p style="color:var(--red);font-size:12.5px;">Selecione ao menos um arquivo.</p>';
       return;
     }
@@ -7484,7 +7560,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     btn.style.cursor = 'default';
     btn.innerHTML = '<span class="spinner"></span> Processando...';
     summaryEl.style.display = 'none';
-    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null;
+    pendingMeta = null; pendingElig = null; pendingCarteira = null; pendingPendPme = null; pendingPendPf = null; pendingCorretorasRaw = null; pendingEligBridge = null; pendingPropostas = null; pendingAssinatura = null; pendingCrescimentoGeral = null;
     let summaryHtml = '';
     try {
       // ---- AUTO-DETECÇÃO: roteia cada arquivo pelo conteúdo, não pelo campo ----
@@ -7588,6 +7664,12 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         pendingAssinatura = parseAssinaturaWorkbook(wb);
         summaryHtml += diffAssinatura(pendingAssinatura);
       }
+      if (crescimentoGeralFile){
+        statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Crescimento Geral...</p>';
+        const wb = await readFileAsWorkbook(crescimentoGeralFile);
+        pendingCrescimentoGeral = parseCrescimentoGeralWorkbook(wb);
+        summaryHtml += diffCrescimentoGeral(pendingCrescimentoGeral);
+      }
       if (rankPrevFile){
         statusEl.innerHTML = '<p style="font-size:12.5px;color:var(--muted);">Lendo Ranking — mês anterior...</p>';
         const wb = await readFileAsWorkbook(rankPrevFile);
@@ -7635,12 +7717,14 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     }
     if (pendingPropostas && window.updatePropostasData) window.updatePropostasData(pendingPropostas);
     if (pendingAssinatura && window.updateAssinaturaData) window.updateAssinaturaData(pendingAssinatura.data);
+    if (pendingCrescimentoGeral && window.updateConvOntemHoje) window.updateConvOntemHoje(pendingCrescimentoGeral.data);
     if ((pendingPropostas || pendingAssinatura) && window.saveDailySnapshot) window.saveDailySnapshot();
     const ts = new Date().toLocaleString('pt-BR', {dateStyle:'short', timeStyle:'short'});
     const el = document.getElementById('sidebarUpdatedAt'); if (el) el.textContent = ts;
     if (window.renderOverview) window.renderOverview();
     if (window.renderCompare) window.renderCompare();
     if (window.renderEligibilidade) window.renderEligibilidade();
+    if (window.renderConversao) window.renderConversao();
     // Não fecha o modal: mostra o passo de publicação (persistência real no GitHub Pages)
     document.getElementById('importSummary').style.display = 'none';
     document.getElementById('publishStep').style.display = 'block';
@@ -7681,6 +7765,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       PROPOSTAS: window.getPropostasData ? window.getPropostasData() : [],
       SLA_HISTORICO: window.getSlaHistorico ? window.getSlaHistorico() : [],
       DAILY_SNAPSHOTS: window.getDailySnapshots ? window.getDailySnapshots() : {},
+      CONV_ONTEM_HOJE: window.getConvOntemHoje ? window.getConvOntemHoje() : {},
       RANK_CUR_LABEL: window.getRankLabels ? window.getRankLabels().cur : 'Mês atual',
       RANK_PREV_LABEL: window.getRankLabels ? window.getRankLabels().prev : 'Mês anterior',
       // Grava o momento da publicação DENTRO do data.json — antes esse "Última atualização"
