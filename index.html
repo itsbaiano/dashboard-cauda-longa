@@ -446,6 +446,10 @@
   /* ===== DETAIL PANEL ===== */
   .detail-panel{display:none;}
   .detail-panel.show{display:block;}
+  /* Quando o painel é movido pra dentro de um card de "Resultado da busca" (efeito
+     acordeão) — encaixa melhor ali dentro em vez de repetir a sombra/margem de painel
+     "solto" que ele tem no lugar padrão. */
+  .search-result-card .detail-panel{margin:14px 0 0; box-shadow:none; border:1px solid var(--line);}
   .detail-head{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; flex-wrap:wrap; gap:10px;}
   .detail-head h3{font-size:15px; color:var(--navy); font-weight:700;}
   .detail-head .meta{font-size:12px; color:var(--muted); margin-top:2px;}
@@ -1564,10 +1568,10 @@
       <div class="f-group">
         <label>Tipo de Período</label>
         <select id="fPeriodType" class="ic-left ic-clock">
-          <option value="all" selected>Todos os meses</option>
+          <option value="all">Todos os meses</option>
           <option value="ano">Ano</option>
           <option value="semestre">Semestre</option>
-          <option value="trimestre">Trimestre</option>
+          <option value="trimestre" selected>Trimestre</option>
           <option value="mensal">Mensal</option>
           <option value="custom">Personalizado (intervalo)</option>
         </select>
@@ -1679,7 +1683,7 @@
       </div>
     </div>
 
-    <div class="section-label">Operação e Reativação</div>
+    <div class="section-label" id="elKpiRowLabel">Operação e Reativação</div>
     <div class="kpi-row" id="elKpiRow" style="grid-template-columns:repeat(5,1fr);"></div>
 
     <div class="reactivation-banner" id="reactBanner">
@@ -1693,7 +1697,7 @@
       <div class="stat"><div class="n" id="reactPeak">—</div><div class="l">Maior potencial único</div></div>
     </div>
 
-<div class="panel">
+<div class="panel" id="baseCorretorasPanel">
       <h2 id="baseCorretorasTitle">Base de Corretoras</h2>
       <div class="panel-sub" id="baseCorretorasSub">Clique em uma linha para ver a evolução mensal · Clique no cabeçalho para ordenar</div>
       <div class="table-wrap" id="baseCorretorasWrap" style="max-height:620px; overflow-y:auto;">
@@ -1837,6 +1841,7 @@
       <div class="panel-sub" style="margin-bottom:0;">Com poucas corretoras no filtro, mostramos o detalhe completo abaixo em vez de um gráfico de "Top 15".</div>
     </div>
 
+    <div id="detailPanelAnchor" style="display:none;"></div>
     <div class="panel detail-panel" id="detailPanel">
       <div class="detail-head">
         <div><h3 id="detailName">—</h3><div class="meta" id="detailMeta">—</div></div>
@@ -1851,6 +1856,7 @@
         <div>Pico mensal<b id="dPico">—</b></div>
         <div>Últimos 3 meses<b id="dU3">—</b></div>
       </div>
+      <div id="detailElegStatus" style="margin:0 0 10px; padding:12px 16px; border-radius:10px; font-size:12.5px; line-height:1.6;"></div>
       <div id="detailRankGap" style="margin: 4px 0 12px; font-size:12.5px; padding:10px 14px; border-radius:8px; background:#fff7ed; color:#9a3412;"></div>
       <div class="detail-stats" id="detailCatStats" style="grid-template-columns:repeat(3,1fr);">
         <div>Individual (período filtrado)<b id="dCatInd">—</b></div>
@@ -2751,7 +2757,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   }
 
   window.showPendenciasModal = function(gestorNome){
-    pendCurrentGestor = gestorNome;
+    // Aceita tanto o nome "bonito" (ex.: "Pablo Amora", como vem do Desempenho Comercial)
+    // quanto o nome cru da planilha (ex.: "PABLO SERGIO RIBEIRO AMORA", como a aba Conversão
+    // usa, vindo do PLANIUM) — sem essa conversão, quem clicava a partir da Conversão sempre
+    // caía numa lista vazia, porque PENDENCIAS_PME/PF são gravadas com o nome bonito.
+    pendCurrentGestor = (PENDENCIAS_PME[gestorNome] || PENDENCIAS_PF[gestorNome])
+      ? gestorNome
+      : (window.getGestorFriendlyName ? window.getGestorFriendlyName(gestorNome) : gestorNome);
     pendActiveTab = 'pme';
     document.getElementById('pendModalGestor').textContent = gestorNome;
     document.getElementById('pendTabPme').classList.add('active');
@@ -4059,8 +4071,30 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('segInatWrap').style.display = isNarrowed ? 'none' : '';
     document.getElementById('insightsPanel').style.display = isNarrowed ? 'none' : '';
     document.getElementById('elegRankGridPanel').style.display = isNarrowed ? 'none' : '';
+    // Pedido do Victor: as duas fileiras de cards-resumo (topo + "Operação e Reativação")
+    // ficam feias/sem sentido quando a tela já está filtrada numa fatia pequena (busca por
+    // nome/código OU clique num dos próprios cards de KPI) — nesses casos o "Resultado da
+    // busca" e a tabela "Base de Corretoras" já mostram a informação direta, sem precisar
+    // do resumo agregado por cima. Some com as duas nos dois casos, iguala o resto da tela.
+    document.getElementById('execKpiRow').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('elKpiRowLabel').style.display = isNarrowed ? 'none' : '';
+    document.getElementById('elKpiRow').style.display = isNarrowed ? 'none' : '';
+    // Quando a busca já resolve pra poucas corretoras, "Resultado da busca" (cards, clicável
+    // pra abrir o detalhe) e a tabela "Base de Corretoras" mostravam exatamente as mesmas
+    // linhas — redundante. Some com a tabela só nesse caso (smallSlice); quando a fatia é
+    // grande (bigSlice, ex.: clicou em "Não Elegíveis" com 70+ corretoras) a tabela continua
+    // sendo o único jeito de navegar pela lista inteira, então permanece visível.
+    document.getElementById('baseCorretorasPanel').style.display = smallSlice ? 'none' : '';
 
     if (smallSlice){
+      // Se o painel de detalhe estava "morando" dentro de um card (efeito acordeão) e a
+      // lista de resultados vai ser reconstruída agora (buscou de novo, mudou filtro...),
+      // resgata ele pro lugar de origem ANTES de sobrescrever o innerHTML — senão o
+      // innerHTML=... abaixo apaga o nó inteiro (mesmo sendo o #detailPanel compartilhado
+      // com o resto da tela) e ele some da página pra sempre, quebrando todo clique futuro.
+      const dpRescue = document.getElementById('detailPanel');
+      document.getElementById('detailPanelAnchor').insertAdjacentElement('afterend', dpRescue);
+      dpRescue.classList.remove('show');
       document.getElementById('execSearchResultsCards').innerHTML = rows.map(r => {
         const gap = r.ctx.periodTotal - r.ctx.meta;
         return `<div class="search-result-card" data-c="${r.d.c}">
@@ -4079,8 +4113,18 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
           </div>
         </div>`;
       }).join('');
+      // Pedido do Victor: em vez de abrir o painel de detalhe separado, mais embaixo na
+      // tela, o card clicado em "Resultado da busca" expande no próprio lugar (efeito
+      // acordeão) — o painel (mesmo, reaproveitando toda a lógica de showDetail) é movido
+      // pra dentro do card. Clicar de novo no card já aberto fecha; clicar em outro card
+      // move o painel pra lá (só um aberto por vez).
       document.querySelectorAll('#execSearchResultsCards .search-result-card').forEach(card => {
-        card.addEventListener('click', () => showDetail(card.dataset.c));
+        card.addEventListener('click', () => {
+          const panel = document.getElementById('detailPanel');
+          const jaAbertoAqui = panel.classList.contains('show') && panel.parentElement === card;
+          if (jaAbertoAqui){ panel.classList.remove('show'); return; }
+          showDetail(card.dataset.c, {attachTo: card, scroll: true});
+        });
       });
     }
 
@@ -4754,7 +4798,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     opts = opts || {scroll:true};
     const d = DATA.find(x=>x.c===codigo);
     if(!d) return;
-    document.getElementById('detailPanel').classList.add('show');
+    // O painel de detalhe é um único elemento reaproveitado por todo mundo que chama
+    // showDetail (tabela, assessoria, ranking...). Por padrão ele mora no lugar de sempre
+    // (marcado por #detailPanelAnchor); quando vem de um card de "Resultado da busca"
+    // (opts.attachTo), move ele pra dentro do card, dando o efeito de acordeão pedido.
+    const panelEl = document.getElementById('detailPanel');
+    if (opts.attachTo) opts.attachTo.appendChild(panelEl);
+    else document.getElementById('detailPanelAnchor').insertAdjacentElement('afterend', panelEl);
+    panelEl.classList.add('show');
     document.getElementById('detailName').textContent = d.n;
 
     // Aviso de "duas contagens diferentes": muitas assessorias têm uma corretora "matriz" com
@@ -4800,6 +4851,37 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     document.getElementById('dGap').textContent = (curGap>=0?'+':'')+fmt0(curGap);
     document.getElementById('dPico').textContent = fmt0(d.pico);
     document.getElementById('dU3').textContent = fmt0(d.u3);
+
+    // Análise de elegibilidade da corretora nesse período — pedido do Victor: além dos
+    // números crus, deixar claro se está elegível e, se não, quanto falta e o quão perto
+    // está. Usa a mesma régua (76%/51%/26%) já usada nos cards "Quase Elegíveis"/"Não
+    // Elegíveis" lá em cima (faixaIdx), pra ficar consistente com o resto da tela.
+    const elegEl = document.getElementById('detailElegStatus');
+    const isElig = calc ? calc.el === 1 : d.el === 1;
+    const pctMeta = curMeta > 0 ? (curTotal / curMeta * 100) : null;
+    if (isElig){
+      elegEl.style.background = 'rgba(22,184,122,.10)';
+      elegEl.style.border = '1px solid rgba(22,184,122,.3)';
+      elegEl.style.color = '#0f6b4f';
+      elegEl.innerHTML = `<i class=ic-check></i> <b>Elegível</b>` + (pctMeta!==null
+        ? ` — ${fmt0(curTotal)} de ${fmt0(curMeta)} vidas necessárias (${pctMeta.toFixed(0)}% da meta)${curGap>0?', +'+fmt0(curGap)+' acima do mínimo':''}.`
+        : ' — sem meta cadastrada pro período (coluna oficial da planilha).');
+    } else if (pctMeta !== null){
+      const faltam = curMeta - curTotal;
+      const tom = pctMeta >= 76 ? 'quase lá — bem perto de virar elegível'
+        : pctMeta >= 51 ? 'esforço médio pela frente'
+        : pctMeta >= 26 ? 'ainda bem distante da meta'
+        : 'muito distante da meta — foco em reativação estrutural';
+      elegEl.style.background = 'rgba(245,54,74,.08)';
+      elegEl.style.border = '1px solid rgba(245,54,74,.3)';
+      elegEl.style.color = '#b91c1c';
+      elegEl.innerHTML = `<i class=ic-alarm></i> <b>Não elegível</b> — faltam <b>${fmt0(faltam)} vidas</b> (está em <b>${pctMeta.toFixed(0)}%</b> da meta) para virar elegível · ${tom}.`;
+    } else {
+      elegEl.style.background = '#f1f5f9';
+      elegEl.style.border = '1px solid var(--line)';
+      elegEl.style.color = 'var(--muted)';
+      elegEl.innerHTML = `<i class=ic-bulb></i> Sem meta cadastrada pra esse período (sem histórico suficiente) — não dá pra calcular a elegibilidade aqui.`;
+    }
 
     const RANK_THRESHOLDS_EST = [{r:'Bronze 1',min:900},{r:'Bronze 2',min:600},{r:'Bronze 3',min:300},{r:'Bronze 4',min:150},{r:'Bronze 5',min:60},{r:'Bronze 6',min:15}];
     const rgEl = document.getElementById('detailRankGap');
@@ -7333,6 +7415,13 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     'DANIELA NOVAIS DOS SANTOS':'Daniela Novais dos Santos','MAXUEL PIMENTEL NOBREGA':'Maxuel Pimentel Nobrega',
     'DANIELA FREDERICO MARTINS CAMPINAS':'Daniela Frederico Martins (Campinas)','DANIELA FREDERICO MARTINS AM':'Daniela Frederico Martins (AM)',
     'KAIQUE ARAUJO DA SILVA':'Kaique Araujo da Silva','FLAVIA AUANA SILVA DE OLIVEIRA':'Flavia Auana Silva de Oliveira'
+  };
+  // Exposto pra outras views converterem nome cru da planilha ("PABLO SERGIO RIBEIRO
+  // AMORA", como o PLANIUM/Conversão usa) pro nome bonito ("Pablo Amora", como
+  // PENDENCIAS_PME/PF são gravadas) — ver window.showPendenciasModal.
+  window.getGestorFriendlyName = function(raw){
+    const key = String(raw||'').trim().toUpperCase();
+    return FULL_19_GESTOR_RAW_MAP[key] || ABREV_GESTOR_MAP[key] || raw;
   };
 
   function parsePfPendenciasWorkbook(workbook){
