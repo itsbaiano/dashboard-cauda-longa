@@ -2150,7 +2150,8 @@
           <div id="rkmPropInfo" style="font-size:12px; color:var(--muted); margin-bottom:12px;"></div>
           <div class="f-group" style="margin-bottom:14px;">
             <label>Mês de vigência</label>
-            <select id="rkmMes" class="ic-left ic-clock"></select>
+            <select id="rkmMes" class="ic-left ic-clock" multiple size="5"></select>
+            <div style="font-size:10.5px; color:var(--muted); margin-top:4px;">Segure Ctrl (⌘ no Mac) e clique pra escolher mais de um mês · nenhum selecionado = todos os meses.</div>
           </div>
           <div class="f-group" style="margin-bottom:14px;">
             <label style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
@@ -5349,11 +5350,17 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   function rkmStatusSelecionados(){
     return [...document.querySelectorAll('#rkmStatusBox input:checked')].map(i=>i.value);
   }
+  // Nenhum mês marcado = todos os meses (mesmo sentido de antes, quando "Todos os meses"
+  // era uma opção própria) — agora que o select aceita mais de um (Ctrl+clique), uma lista
+  // vazia já cobre esse caso sozinha, sem precisar de uma opção especial pra isso.
+  function rkmMesesSelecionados(){
+    return [...document.getElementById('rkmMes').selectedOptions].map(o=>o.value).filter(Boolean);
+  }
   function rkmFiltrar(props){
-    const mv = document.getElementById('rkmMes').value;
+    const mvs = rkmMesesSelecionados();
     const sts = rkmStatusSelecionados();
     return props.filter(p => {
-      if (mv && p.vg.slice(0,7) !== mv) return false;
+      if (mvs.length && mvs.indexOf(p.vg.slice(0,7)) < 0) return false;
       if (sts.length && sts.indexOf(rkmStatusKey(p.st)) < 0) return false;
       return true;
     });
@@ -5376,9 +5383,14 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     sel.disabled = false; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer';
 
     const meses = [...new Set(props.map(p=>p.vg && p.vg.slice(0,7)).filter(Boolean))].sort().reverse();
-    sel.innerHTML = '<option value="">Todos os meses (' + props.length + ')</option>' +
-      meses.map(m => { const q = props.filter(p=>p.vg.slice(0,7)===m).length; return `<option value="${m}">${mesLabel(m)} (${q})</option>`; }).join('');
-    if (meses.length) sel.value = meses[0];
+    // Sem opção "Todos os meses" própria — nesse select (agora de múltipla escolha, Ctrl+clique)
+    // nenhum mês marcado já significa "todos", então essa opção extra só ia confundir junto
+    // com meses de verdade na mesma lista.
+    sel.innerHTML = meses.map(m => { const q = props.filter(p=>p.vg.slice(0,7)===m).length; return `<option value="${m}">${mesLabel(m)} (${q})</option>`; }).join('');
+    // Mantém o mesmo padrão de antes (mês mais recente pré-selecionado ao abrir) — só que
+    // agora marcando a opção diretamente, já que atribuir .value não é confiável num select
+    // de múltipla escolha.
+    if (meses.length){ const first = sel.querySelector(`option[value="${meses[0]}"]`); if (first) first.selected = true; }
 
     // Checkboxes de status — só os que existem para esta corretora
     const cont = {};
@@ -5389,13 +5401,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
        </label>`).join('');
 
     const atualiza = () => {
-      const mv = sel.value;
+      const mvs = rkmMesesSelecionados();
       // O número ao lado de cada status (ex.: "Pendência 1") mostrava sempre o total em TODOS
-      // os meses, mesmo com um mês específico selecionado — parecia contradizer o total de
-      // propostas do mês (ex.: via "Pendência 1 + Em análise 2" alguém esperava 3, mas o mês
-      // tinha 19 porque o resto era de outros status). Recalcula pro mês escolhido, ou o total
-      // geral mesmo quando for "Todos os meses".
-      const escopoMes = mv ? props.filter(p => p.vg && p.vg.slice(0,7) === mv) : props;
+      // os meses, mesmo com mês(es) específico(s) selecionado(s) — parecia contradizer o total
+      // de propostas do mês (ex.: via "Pendência 1 + Em análise 2" alguém esperava 3, mas o mês
+      // tinha 19 porque o resto era de outros status). Recalcula pro(s) mês(es) escolhido(s), ou
+      // o total geral mesmo quando for "todos os meses" (nada marcado).
+      const escopoMes = mvs.length ? props.filter(p => p.vg && mvs.indexOf(p.vg.slice(0,7)) >= 0) : props;
       const contMes = {};
       escopoMes.forEach(p => { const k = rkmStatusKey(p.st); contMes[k] = (contMes[k]||0)+1; });
       box.querySelectorAll('.rkm-st').forEach(l => {
@@ -5410,31 +5422,33 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       btn.disabled = semStatus || !lista.length;
       btn.style.opacity = btn.disabled ? '.5' : '';
       btn.style.cursor = btn.disabled ? 'default' : 'pointer';
+      const mesesTxt = mvs.map(mesLabel).join(', ');
       // "0 proposta(s)" sozinho não deixava claro POR QUE (geralmente é o filtro de mês ainda
       // ativo, sobrando de uma seleção anterior, escondendo pendências que existem só em outro
       // mês) — sem essa dica, o botão só ficava desabilitado sem explicação visível.
       info.innerHTML = semStatus
         ? '<span style="color:var(--accent-coral);">Selecione ao menos um status.</span>'
-        : (!lista.length && mv
-            ? `<span style="color:var(--accent-coral);">Nenhuma proposta com esse status em ${mesLabel(mv)}. <a href="#" id="rkmVerTodosMeses" style="color:var(--primary-light); text-decoration:underline;">Ver todos os meses</a></span>`
-            : `<b>${lista.length}</b> proposta(s) · <b>${rkFmt(vidas)}</b> vida(s)${mv?' com vigência em '+mesLabel(mv):''}${nSt<totSt?' · filtrado por status':''}.`);
+        : (!lista.length && mvs.length
+            ? `<span style="color:var(--accent-coral);">Nenhuma proposta com esse status em ${mesesTxt}. <a href="#" id="rkmVerTodosMeses" style="color:var(--primary-light); text-decoration:underline;">Ver todos os meses</a></span>`
+            : `<b>${lista.length}</b> proposta(s) · <b>${rkFmt(vidas)}</b> vida(s)${mvs.length?' com vigência em '+mesesTxt:''}${nSt<totSt?' · filtrado por status':''}.`);
       const verTodos = document.getElementById('rkmVerTodosMeses');
-      if (verTodos) verTodos.onclick = (e) => { e.preventDefault(); sel.value = ''; atualiza(); };
+      if (verTodos) verTodos.onclick = (e) => { e.preventDefault(); [...sel.options].forEach(o=>o.selected=false); atualiza(); };
     };
     // Marcar/desmarcar um status manualmente (clicando direto no checkbox, sem usar o link
-    // "só pendências") tinha o mesmo problema: ficava preso no mês que já estava selecionado.
-    // Aqui, sempre que a MUDANÇA DE STATUS (não a troca manual de mês) resultar em zero
-    // propostas só por causa do mês, troca sozinho pra "Todos os meses" — ninguém marca um
-    // status esperando ver "0 propostas" só porque o filtro de mês ficou de um clique anterior.
+    // "só pendências") tinha o mesmo problema: ficava preso no(s) mês(es) que já estava(m)
+    // selecionado(s). Aqui, sempre que a MUDANÇA DE STATUS (não a troca manual de mês) resultar
+    // em zero propostas só por causa do mês, limpa a seleção de mês sozinho pra "todos os
+    // meses" — ninguém marca um status esperando ver "0 propostas" só porque o filtro de mês
+    // ficou de uma seleção anterior.
     const statusMudou = () => {
-      const mv = sel.value;
-      if (mv){
+      const mvs = rkmMesesSelecionados();
+      if (mvs.length){
         const comMes = rkmFiltrar(props).length;
         const semMesLista = props.filter(p => {
           const sts = rkmStatusSelecionados();
           return !sts.length || sts.indexOf(rkmStatusKey(p.st)) >= 0;
         });
-        if (!comMes && semMesLista.length) sel.value = '';
+        if (!comMes && semMesLista.length) [...sel.options].forEach(o=>o.selected=false);
       }
       atualiza();
     };
@@ -5447,10 +5461,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
         const cfg = RKM_STATUS.find(x=>x.k===i.value);
         i.checked = !!(cfg && cfg.acao);
       });
-      // "Só pendências" quer mostrar TUDO que precisa de ação, não só o que caiu no mês que
-      // por acaso estava selecionado — sem isso, uma corretora com pendências só em outro mês
-      // ficava com filtro zerado e o botão de baixar desabilitado sem nenhuma pendência visível.
-      sel.value = '';
+      // "Só pendências" quer mostrar TUDO que precisa de ação, não só o que caiu no(s) mês(es)
+      // que por acaso estava(m) selecionado(s) — sem isso, uma corretora com pendências só em
+      // outro mês ficava com filtro zerado e o botão de baixar desabilitado sem nada visível.
+      [...sel.options].forEach(o=>o.selected=false);
       atualiza();
     };
     document.getElementById('rkmStAll').onclick = (e) => {
@@ -5465,7 +5479,7 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   function rkmGerarPDF(){
     if (!rkmCurrent) return;
     const r = rkmCurrent;
-    const mv = document.getElementById('rkmMes').value;
+    const mvs = rkmMesesSelecionados();
     let props = rkmFiltrar(propostasDaCorretora(r.n));
     if (!props.length) return;
     // Descrição dos status incluídos, para o cabeçalho do relatório
@@ -5529,7 +5543,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
 <button class="noprint" onclick="window.print()">🖨️ Salvar como PDF (Ctrl+P)</button>
 <div class="hd">
   <div><h1>Relatório de Propostas</h1><div class="sb">${esc(r.n)}</div></div>
-  <div class="rt"><b>Hapvida NDI SP</b><br>${esc(r.e==='—'?'':r.e)} · ${esc(rkShortGestor(r.g))}<br>${mv ? 'Vigência: '+mesLabel(mv) : 'Todas as vigências'} · ${esc(stsTxt)}<br>Emitido em ${hoje}</div>
+  <div class="rt"><b>Hapvida NDI SP</b><br>${esc(r.e==='—'?'':r.e)} · ${esc(rkShortGestor(r.g))}<br>${mvs.length ? 'Vigência: '+esc(mvs.map(mesLabel).join(', ')) : 'Todas as vigências'} · ${esc(stsTxt)}<br>Emitido em ${hoje}</div>
 </div>
 <div class="kp">
   <div><div class="l">Propostas</div><div class="v">${props.length}</div></div>
@@ -5558,7 +5572,8 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       const blob = new Blob(['\ufeff' + html], {type:'text/html;charset=utf-8'});
       const url = URL.createObjectURL(blob);
       const sufSt = (stsSel.length && stsSel.length < totalSt) ? '_' + stsSel.join('-') : '';
-      const nomeArq = 'Propostas_' + String(r.n).replace(/[^A-Za-z0-9]+/g,'_').slice(0,40) + (mv ? '_' + mv : '') + sufSt + '.html';
+      const sufMes = mvs.length ? '_' + mvs.slice().sort().join('-') : '';
+      const nomeArq = 'Propostas_' + String(r.n).replace(/[^A-Za-z0-9]+/g,'_').slice(0,40) + sufMes + sufSt + '.html';
       const a = document.createElement('a');
       a.href = url; a.download = nomeArq;
       document.body.appendChild(a); a.click(); a.remove();
