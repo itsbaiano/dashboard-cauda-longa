@@ -1426,7 +1426,7 @@
       </div>
       <div class="panel">
         <h2>% Atingimento por Categoria</h2>
-        <div class="panel-sub">Meta vs. Integrado — Junho/2026, time completo</div>
+        <div class="panel-sub" id="ovCategoriaSub">Meta vs. Integrado — Junho/2026, time completo</div>
         <div class="chart-box tall"><canvas id="ovChartCategoria"></canvas></div>
       </div>
     </div>
@@ -2634,6 +2634,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (window.renderCompare) window.renderCompare();
   };
   window.getCurrentMonth = function(){ return currentMonth; };
+  // "Junho/2026" etc. (mesmo formato do texto que já existia fixo no subtítulo do gráfico
+  // "% Atingimento por Categoria" da Visão Geral) — exposto pra esse subtítulo acompanhar o
+  // mês de referência de verdade, em vez de ficar travado no mês em que foi escrito.
+  window.getCurrentMonthLabelSlash = function(){
+    const [y, m] = String(currentMonth||'').split('-');
+    return (MJ_MONTH_LABELS_PT[m] || m) + '/' + y;
+  };
   // Mês cronologicamente mais recente já importado — independente de qual mês
   // o usuário está vendo no momento no dropdown "Mês de referência".
   window.getLatestKnownMonth = function(){ return Object.keys(MJ_TEAMS_BY_MONTH).sort().pop(); };
@@ -6154,6 +6161,12 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     }
 
     // Categoria (universal — funciona pra qualquer time/gestor)
+    // Subtítulo era um texto fixo ("Junho/2026, time completo") escrito manualmente quando
+    // essa tela foi feita — nunca acompanhou nem o mês de referência real nem o filtro de
+    // equipe/gestor selecionado. Agora usa o mês atual (window.getCurrentMonthLabelSlash) e
+    // o mesmo texto de escopo já usado no card "Gestores no Escopo" logo acima.
+    const mesRefSub = window.getCurrentMonthLabelSlash ? window.getCurrentMonthLabelSlash() : '';
+    document.getElementById('ovCategoriaSub').textContent = `Meta vs. Integrado — ${mesRefSub}, ${isAllTeams ? 'time completo' : scopeLabel}`;
     const catKeys = Object.keys(catLabels);
     const scopeCat = scopeTotal.cat || (scopeMembers[0] ? scopeMembers[0].cat : {IND:{meta:0,int:0},SS:{meta:0,int:0},PME:{meta:0,int:0},ADM:{meta:0,int:0}});
     destroyOv('categoria');
