@@ -2661,6 +2661,34 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     if (newData.pme) PENDENCIAS_PME = newData.pme;
     if (newData.pf) PENDENCIAS_PF = newData.pf;
   };
+  // A aba "Planilha1" (que alimenta PENDENCIAS_PME) é um extrato menor da mesma base do
+  // PLANIUM (aba completa, que alimenta PROPOSTAS/"Em Funil") — às vezes fica um pouco
+  // atrasada: uma proposta recém-recebida já aparece no PLANIUM (conta pra "Em Funil" na
+  // Conversão), mas ainda não chegou na Planilha1, ficando "invisível" pra quem tenta achar
+  // ela pelo número no modal de Pendências (era exatamente o caso da proposta 493400,
+  // reportado em 27/08/2026). Preenche essa lacuna: qualquer proposta ativa (pendência/
+  // análise) que o PLANIUM já conhece, mas que não tem linha correspondente na Planilha1,
+  // entra em PENDENCIAS_PME também — com os dados que o PLANIUM tem (sem CADASTRO/DITEC/
+  // BITIX, que só existem na Planilha1) — melhor mostrar incompleta do que não achar nada.
+  // Chamado pelo import (window.reconciliarPendenciasComPropostas), depois que tanto
+  // Pendências PME/SS quanto o Planium (Propostas) já foram atualizados nessa rodada.
+  window.reconciliarPendenciasComPropostas = function(){
+    const propostas = window.getPropostasData ? window.getPropostasData() : [];
+    if (!propostas.length) return 0;
+    const isAtiva = st => /pend|analis/i.test(String(st||''));
+    const existentes = new Set();
+    Object.values(PENDENCIAS_PME).forEach(arr => arr.forEach(p => existentes.add(String(p.proposta))));
+    let adicionadas = 0;
+    propostas.filter(p => isAtiva(p.st) && p.g && !existentes.has(String(p.p))).forEach(p => {
+      (PENDENCIAS_PME[p.g] = PENDENCIAS_PME[p.g] || []).push({
+        proposta: p.p, corretora: p.co,
+        status: { planium: p.st, cadastro: '', ditec: '', bitix: '' },
+        dataReceb: p.dr || '', dataVigencia: p.vg, beneficiarios: p.bn,
+      });
+      adicionadas++;
+    });
+    return adicionadas;
+  };
   window.updateAssinaturaData = function(newData){
     if (newData) PENDENCIAS_ASSINATURA = newData;
   };
@@ -7833,6 +7861,11 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       });
     }
     if (pendingPropostas && window.updatePropostasData) window.updatePropostasData(pendingPropostas);
+    // Reconcilia Pendências (Planilha1) com o Planium (PROPOSTAS) — cobre propostas recém-
+    // chegadas que o Planium já tem mas a Planilha1 ainda não, pra nunca mais "sumir" do
+    // modal de Pendências / busca por número. Só faz sentido rodar quando os dois vieram
+    // juntos nessa importação (senão não tem com o que comparar).
+    if (pendingPendPme && pendingPropostas && window.reconciliarPendenciasComPropostas) window.reconciliarPendenciasComPropostas();
     if (pendingAssinatura && window.updateAssinaturaData) window.updateAssinaturaData(pendingAssinatura.data);
     if (pendingCrescimentoGeral && window.updateConvOntemHoje) window.updateConvOntemHoje(pendingCrescimentoGeral.data);
     if ((pendingPropostas || pendingAssinatura) && window.saveDailySnapshot) window.saveDailySnapshot();
