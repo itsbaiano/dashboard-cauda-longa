@@ -137,11 +137,17 @@
     .sidebar-month-wrap{margin-top:0 !important; padding:0; flex:1; min-width:130px;}
     .sidebar-month-label{display:none;}
     .sidebar-bottom{gap:8px;}
-    /* O botão "Atualizar Dados" flutua fixo no canto inferior direito — numa tela larga
-       sobra espaço em branco ao lado do último gráfico, mas no celular ele acaba tampando
-       texto/valores. Aqui fica um pouco menor e a página ganha uma reserva de espaço embaixo
-       pra sempre ter uma área livre onde o botão pode "pousar" sem cobrir conteúdo. */
-    #btnOpenImport{padding:11px 16px; font-size:12px; bottom:14px; right:14px;}
+    /* Os botões "Resumo do Dia"/"Atualizar Dados" flutuam fixos no canto inferior direito —
+       numa tela larga sobra espaço em branco ao lado do último gráfico, mas no celular os
+       dois juntos (com texto) tomavam ~40% da largura e ficavam tampando texto/gráfico atrás
+       (achado testando responsividade em 2026-09-03). Mesmo padrão já usado no menu lateral:
+       vira botão redondo só com ícone (aria-label mantém acessível), bem menor. A página
+       também ganha uma reserva de espaço embaixo pra sempre ter uma área livre onde os
+       botões podem "pousar" sem cobrir conteúdo. */
+    #btnOpenResumo, #btnOpenImport{padding:0; width:46px; height:46px; border-radius:50%; justify-content:center;}
+    #btnOpenResumo .fab-label, #btnOpenImport .fab-label{display:none;}
+    #btnOpenResumo{bottom:66px; right:14px;}
+    #btnOpenImport{bottom:14px; right:14px;}
     .main-area{padding-bottom:76px;}
   }
 
@@ -254,7 +260,12 @@
 
   .grid-2{display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin-bottom:16px;}
   .grid-2.even{grid-template-columns:1fr 1fr;}
-  .panel{background:var(--card); border-radius:16px; padding:20px 22px; border:1px solid var(--line); box-shadow:0 1px 3px rgba(16,30,99,.05); margin-bottom:16px;}
+  /* min-width:0 é necessário pra um item de grid/flex conseguir encolher além do tamanho do
+     próprio conteúdo (ex.: um <canvas> de gráfico com largura mínima) — sem isso, "1fr" vira
+     só uma sugestão: o item se recusa a ficar menor que seu conteúdo, e força rolagem
+     horizontal na página inteira em telas bem estreitas (achado testando em 320px, 2026-09-03).
+     Não afeta telas largas, onde já sobra espaço de qualquer forma. */
+  .panel{background:var(--card); border-radius:16px; padding:20px 22px; border:1px solid var(--line); box-shadow:0 1px 3px rgba(16,30,99,.05); margin-bottom:16px; min-width:0;}
   .panel h2{font-size:15px; font-weight:700; color:var(--navy); margin-bottom:2px; letter-spacing:-.01em;}
   .panel .panel-sub{font-size:12px; color:var(--muted); margin-bottom:14px;}
   .chart-box{position:relative; height:280px;}
@@ -464,7 +475,11 @@
   @media (max-width:980px){
     .kpi-row{grid-template-columns:repeat(2,1fr) !important;}
     .gestor-grid{grid-template-columns:repeat(2,1fr);}
-    .grid-2{grid-template-columns:1fr;}
+    /* .grid-2.even (2 classes) tem mais especificidade que .grid-2 sozinho (regra logo
+       acima, linha ~256) — sem incluir a variante ".even" aqui explicitamente, ela ganha
+       da regra de celular e o card continua em 2 colunas, forçando rolagem horizontal na
+       página inteira (achado testando responsividade em 2026-09-03). */
+    .grid-2, .grid-2.even{grid-template-columns:1fr;}
     .view-nav{flex-direction:column;}
   }
   /* Celular pequeno (iPhone SE e afins, ~375px) — 2 colunas nesses cards vira ~160px de
@@ -478,6 +493,11 @@
     .ass-kpis{grid-template-columns:1fr;}
     .ass-overview{grid-template-columns:1fr;}
     #cmpCardsGrid{grid-template-columns:1fr !important;}
+    /* .view-switch (ex.: "Times/Gestores · Corretoras · Assessorias" no Comparativo) é um
+       inline-flex sem quebra — com 3 abas de texto mais longo, passa da largura da tela em
+       aparelhos bem estreitos (achado testando em 320px, iPhone SE). Deixa quebrar em mais
+       de uma linha em vez de estourar a página. */
+    .view-switch{flex-wrap:wrap;}
   }
 
   /* ===== v8: ÍCONES SVG (mask + currentColor) ===== */
@@ -590,6 +610,7 @@
   /* Maiores crescimentos do período */
   .gain-list{display:flex; flex-direction:column; gap:8px;}
   .gain-row{display:grid; grid-template-columns:32px 1fr auto; gap:12px; align-items:center; padding:11px 14px; background:linear-gradient(90deg, rgba(22,184,122,.08), rgba(22,184,122,.01)); border:1px solid rgba(22,184,122,.22); border-radius:11px; cursor:pointer; transition:box-shadow .15s ease, transform .15s ease;}
+  .gain-row .g-name{min-width:0;}
   .gain-row:hover{box-shadow:0 4px 12px rgba(22,184,122,.16); transform:translateX(2px);}
   .gain-row .g-ico{width:32px; height:32px; border-radius:50%; background:rgba(22,184,122,.16); color:#16B87A; display:flex; align-items:center; justify-content:center; font-size:14px;}
   .gain-row .g-name b{display:block; font-size:12px; color:var(--navy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:230px;}
@@ -680,7 +701,7 @@
 
   /* ===== ABA COMPARATIVO — Confronto Head-to-Head ===== */
   .vs-hero{display:grid; grid-template-columns:1fr 58px 1fr; align-items:stretch; background:var(--card); border:1px solid var(--line); border-radius:18px; overflow:hidden; box-shadow:0 1px 3px rgba(16,30,99,.05); margin-bottom:16px;}
-  .vs-side{padding:24px 26px; position:relative; animation:fadeInUp .3s ease-out both;}
+  .vs-side{padding:24px 26px; position:relative; animation:fadeInUp .3s ease-out both; min-width:0;}
   .vs-side.left{background:linear-gradient(135deg, rgba(46,82,212,.06), transparent);}
   .vs-side.right{background:linear-gradient(225deg, rgba(242,107,33,.06), transparent); text-align:right;}
   .vs-avatar{width:50px; height:50px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800; font-size:15px; margin-bottom:13px; box-shadow:0 3px 10px rgba(16,30,99,.18);}
@@ -833,6 +854,11 @@
     .vs-bigpct{font-size:32px;}
     .cat-battle-row{grid-template-columns:1fr 72px 1fr; gap:6px;}
     .cb-track-wrap{max-width:none;}
+    /* .vs-side tinha padding:24px 26px fixo (linha ~704) — numa coluna de ~120px (metade
+       de uma tela de 320px, já dividida pelo "VS" do meio), esse padding sozinho consumia
+       quase metade do espaço, espremendo o número grande ("79,6%") quase até a borda
+       (achado testando em 320px, 2026-09-03). Reduz só o padding horizontal. */
+    .vs-side{padding-left:12px; padding-right:12px;}
   }
 
   @media (max-width:1100px){ .exec-grid{grid-template-columns:repeat(3,1fr);} }
@@ -1318,8 +1344,8 @@
   </script>
 
 
-  <button id="btnOpenResumo" style="position:fixed; bottom:84px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:#16B87A; color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25);"><i class=ic-clip></i> Resumo do Dia</button>
-  <button id="btnOpenImport" style="position:fixed; bottom:20px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:var(--navy); color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25);"><i class=ic-refresh></i> Atualizar Dados</button>
+  <button id="btnOpenResumo" aria-label="Resumo do Dia" style="position:fixed; bottom:84px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:#16B87A; color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25); display:flex; align-items:center; gap:8px;"><i class=ic-clip></i><span class="fab-label">Resumo do Dia</span></button>
+  <button id="btnOpenImport" aria-label="Atualizar Dados" style="position:fixed; bottom:20px; right:20px; z-index:50; padding:13px 20px; border-radius:50px; border:none; background:var(--navy); color:#fff; font-weight:700; font-size:13px; cursor:pointer; box-shadow:0 4px 14px rgba(15,23,42,.25); display:flex; align-items:center; gap:8px;"><i class=ic-refresh></i><span class="fab-label">Atualizar Dados</span></button>
 
   <div id="importModalOverlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:100; align-items:center; justify-content:center; padding:20px;">
     <div id="importModal" style="background:#fff; border-radius:16px; padding:28px; max-width:600px; width:100%; max-height:85vh; overflow-y:auto; overflow-x:hidden; box-sizing:border-box;">
