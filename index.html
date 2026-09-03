@@ -1109,12 +1109,40 @@
     handleCodeInApp: true
   };
 
+  // Alguns clientes de e-mail corporativos (achado com o Pablo em 2026-09-03: Outlook/Safe
+  // Links da Hapvida, mas outros scanners de segurança fazem o mesmo) "abrem" o link sozinhos
+  // pra escanear em busca de phishing, ANTES da pessoa clicar de verdade — como o link do
+  // Firebase só serve pra UM uso, isso consome o link, e quem clica de verdade cai em
+  // "Firebase: The action code is invalid... (auth/invalid-action-code)". Antes o login
+  // completava sozinho assim que a página carregava, sem esperar clique nenhum — exatamente o
+  // que deixa vulnerável a esses scanners. Agora sempre espera um clique de verdade (reaproveita
+  // o mesmo botão/campo de e-mail, só troca de comportamento) — scanner automático não clica.
+  let completingLink = false;
   btn.addEventListener('click', function(){
     const email = norm(emailInput.value);
     setError('');
     if (!email){ setError('Digite um e-mail.'); return; }
     if (!ALLOWED_SET.has(email)){
       setError('Este e-mail não tem acesso liberado a este painel. Fale com o administrador.');
+      return;
+    }
+    if (completingLink){
+      btn.disabled = true;
+      btn.textContent = 'Confirmando...';
+      formWrap.style.display = 'none';
+      msgEl.textContent = 'Confirmando acesso...';
+      firebase.auth().signInWithEmailLink(email, window.location.href).then(function(){
+        window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
+        }
+      }).catch(function(err){
+        setError('Não consegui confirmar o acesso: ' + err.message);
+        formWrap.style.display = 'flex';
+        btn.disabled = false;
+        btn.textContent = 'Concluir login';
+        msgEl.textContent = 'Confirme seu e-mail e clique pra concluir o login.';
+      });
       return;
     }
     btn.disabled = true;
@@ -1131,24 +1159,16 @@
 
   emailInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') btn.click(); });
 
-  // Se a página foi aberta a partir do link recebido por e-mail, completa o login
+  // Se a página foi aberta a partir do link recebido por e-mail, prepara o botão pra concluir
+  // o login — mas só de verdade quando a pessoa clicar (ver comentário acima).
   if (firebase.auth().isSignInWithEmailLink(window.location.href)) {
-    let storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
-    if (!storedEmail) storedEmail = window.prompt('Confirme o e-mail que você usou pra pedir o acesso:');
-    if (storedEmail) {
-      formWrap.style.display = 'none';
-      msgEl.textContent = 'Confirmando acesso...';
-      firebase.auth().signInWithEmailLink(norm(storedEmail), window.location.href).then(function(){
-        window.localStorage.removeItem(EMAIL_STORAGE_KEY);
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState({}, document.title, window.location.href.split('?')[0]);
-        }
-      }).catch(function(err){
-        setError('Não consegui confirmar o acesso: ' + err.message);
-        formWrap.style.display = 'flex';
-        msgEl.textContent = 'Digite seu e-mail cadastrado pra receber um link de acesso.';
-      });
-    }
+    completingLink = true;
+    const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+    if (storedEmail) emailInput.value = storedEmail;
+    msgEl.textContent = storedEmail
+      ? 'Clique abaixo pra concluir o login com ' + storedEmail + '.'
+      : 'Confirme o e-mail que você usou pra pedir o acesso e clique abaixo.';
+    btn.textContent = 'Concluir login';
   }
 
   if (IS_LOCAL_TEST){
