@@ -6386,52 +6386,15 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // código sem zero à esquerda podia ser marcada como "nova" só por não bater string-a-
     // string contra a chave normalizada da Carteira.
     const existingCodes = new Set(DATA.map(d=>window.normalizeCodigo(d.c)));
-    // Índice de nomes normalizados (mesma normalização de rkNormName, usada pra achar
-    // "Propostas desta corretora" no Ranking) com proposta em aberto no Planium agora —
-    // ver por quê abaixo.
-    const propostasNormList = [...new Set((typeof PROPOSTAS !== 'undefined' ? PROPOSTAS : []).map(p => rkNormName(p.co)).filter(Boolean))];
-    // Prefixo, não igualdade — mesma regra de propostasDaCorretora (a razão social do
-    // Planium e a da Carteira nem sempre batem char-a-char: achado real testando a própria
-    // F8, "...VIDA E BENEFIC LTDA" no Planium x "...VIDA E BENEFICIOS LTDA" na Carteira).
-    const hasPropostaReal = razao => {
-      const n = rkNormName(razao);
-      return n && propostasNormList.some(pn => pn === n || pn.indexOf(n) === 0 || n.indexOf(pn) === 0);
-    };
     const seen = new Set();
     const found = [];
     Object.keys(carteira.byCodigo).forEach(codigo => {
       if (existingCodes.has(codigo) || seen.has(codigo)) return;
-      // Escopo: usa a mesma lista GESTOR_EQUIPE (~linha 3688) que já decide, em todo o
-      // resto do dash, quem pertence à diretoria da Fabyanna — não mais o rótulo bruto da
-      // coluna EQUIPE VENDA da Carteira ser literalmente "CAUDA LONGA". A Carteira é
-      // nacional (código de corretora de qualquer filial do Brasil); GESTOR_EQUIPE é a
-      // lista curta e já mantida à mão dos gestores de verdade desta diretoria — usar
-      // isOutOfScopeGestor (lista de exclusão) aqui sozinho deixaria passar milhares de
-      // corretoras de outras filiais/diretorias, então o corte certo é "está em
-      // GESTOR_EQUIPE" (inclui INTERIOR SP/VENDA INTERNA só pra rótulo, por isso ainda
-      // exclui os dois times fora do escopo dos números). O filtro antigo (e.equipe ===
-      // 'CAUDA LONGA') fazia corretora nova de gestor legítimo de outro time da mesma
-      // diretoria nunca ser detectada — caso real achado 2026-09-04: código 0540, F8
-      // CORRETORA DE SEGUROS VIDA E BENEFICIOS LTDA, gestora Camila Alves Pertinhez
-      // (EQUIPE VENDA "PLATAFORMA SP" na Carteira, gestora válida da diretoria, confirmado
-      // por Victor) — nunca aparecia em lugar nenhum do dash por causa disso.
-      //
-      // Além do escopo, exige proposta real em aberto (hasPropostaReal) — a Carteira
-      // sozinha tem ~12 mil códigos nacionais, a imensa maioria cadastro morto (zero
-      // venda, zero proposta, nunca existiu de verdade — inclusive linha-placeholder "SEM
-      // QUADRO COMISSAO ATIVO"). Sem esse corte, uma importação de Carteira inundaria a
-      // Elegibilidade com milhares de linhas fantasmas. Confirmado com Victor 2026-09-04
-      // (F8: zero venda em 20 meses, mas fluxo real de propostas Planium) — é esse padrão
-      // específico (proposta rodando, venda ainda não) que deve aparecer, não tudo.
-      const entries = carteira.byCodigo[codigo].filter(e => {
-        const team = GESTOR_EQUIPE[(e.gestorRaw||'').toUpperCase()];
-        if (!team || team === 'INTERIOR SP' || team === 'VENDA INTERNA') return false;
-        return hasPropostaReal(e.razao);
-      });
+      const entries = carteira.byCodigo[codigo].filter(e => e.equipe === 'CAUDA LONGA');
       if (!entries.length) return;
       seen.add(codigo);
       const e = entries[0];
-      const friendly = CL_RAW_TO_FRIENDLY[e.gestorRaw.toUpperCase()] || e.gestorRaw;
+      const friendly = CL_RAW_TO_FRIENDLY[e.gestorRaw.toUpperCase()] || 'Sem Gestor Atribuído';
       const zeros = Array(MONTH_LABELS.length).fill(0);
       found.push({
         c: codigo, n: e.razao || '(Nome não informado)', g: friendly, gr: '—',
@@ -8211,7 +8174,24 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     // já trocou o nome uma vez (de "NDI SP - META <MÊS>" pra "NDI SP - <MÊS>").
     if (META_SHEET_PREFIXES.some(p => has(p))) return 'meta';
     if (has('ELEGIBILIDADE') || hasExact('ELEGIBILIDADE')) return 'elig';
-    if (has('BASE') && !has('ELEGIBILIDADE')) return 'corretoras';
+    // Achado no V2 em 2026-08-27 (portado agora pro V1): o extrato bruto de Corretoras (aba
+    // única "Export", sem nenhuma "TB_BASE DE DADOS" junto) nunca era reconhecido aqui — só a
+    // condição "BASE" cobria o caso onde o arquivo "NDI SP - Por Gestor" inteiro vinha com
+    // essa aba extra. parseCorretorasRawWorkbook já procura uma aba "EXPORT" (exata), então
+    // esse formato precisa contar como 'corretoras' também.
+    if (hasExact('EXPORT') || (has('BASE') && !has('ELEGIBILIDADE'))) return 'corretoras';
+    // Carteira/Gestores ("BANCO DE DADOS - COMERCIAL", abas CONSULTA/COMERCIAL/ASSESSORIAS) —
+    // faltava esse ramo inteiro. Sem ele, esse arquivo nunca batia em nenhum kind (não tem
+    // aba "BASE...", só "COMERCIAL") e caía direto em "não reconhecido" — SEM erro visível
+    // nenhum na tela sempre que subido junto do Extrato do BI, porque o outro arquivo da
+    // mesma leva já tinha sido reconhecido como 'meta' e a checagem de "nada reconhecido"
+    // só dispara quando NENHUM arquivo bate. Achado 2026-09-04: Victor subiu Carteira +
+    // Extrato do BI juntos, o resumo de Desempenho Comercial/Ranking apareceu normal, mas a
+    // Carteira nunca era processada (pendingCarteira ficava null) — corretora nova (ex.: F8,
+    // código 0540) nunca entrava em lugar nenhum, sem nenhum aviso de que algo tinha falhado.
+    // has() (prefixo), não hasExact() — mesma regra de findSheet('COMERCIAL') que
+    // parseCarteiraWorkbook já usa, sobrevive a algo tipo "COMERCIAL 2026" no futuro.
+    if (has('COMERCIAL')) return 'carteira';
     return 'unknown';
   }
 
@@ -8278,13 +8258,14 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
         const kind = detectWorkbookKind(wb);
         if (kind === 'meta' && !metaWb){ metaWb = wb; }
         else if (kind === 'elig' && !eligWb){ eligWb = wb; }
-        else if (kind === 'corretoras' && !corretorasWb){ corretorasWb = wb; carteiraWb = wb; }
+        else if (kind === 'corretoras' && !corretorasWb){ corretorasWb = wb; }
+        else if (kind === 'carteira' && !carteiraWb){ carteiraWb = wb; }
         else { naoReconhecidos.push(file.name); }
       }
 
-      // Tenta interpretar como Carteira o arquivo de corretoras (mesma estrutura)
       if (carteiraWb){
-        try { pendingCarteira = parseCarteiraWorkbook(carteiraWb); } catch(e){ /* segue sem carteira */ }
+        try { pendingCarteira = parseCarteiraWorkbook(carteiraWb); }
+        catch(e){ summaryHtml += `<div style="color:var(--red);font-size:12.5px;"><i class=ic-warn></i> Não consegui interpretar a Carteira/Gestores: ${e.message}</div>`; }
       }
 
       if (naoReconhecidos.length && !metaWb && !eligWb && !corretorasWb){
