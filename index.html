@@ -2188,10 +2188,6 @@
       </div>
     </div>
 
-    <div id="rankPartialBanner" style="display:flex; align-items:center; gap:10px; background:#fff7ed; border:1px solid #fed7aa; color:#9a5b1a; font-size:12.5px; padding:11px 16px; border-radius:11px; margin-bottom:16px; font-weight:600;">
-      <i class=ic-clock></i> <span id="rankPartialText">Julho ainda está em andamento (grade aberta) — os números sobem até o mês fechar. A comparação com junho reflete um mês parcial vs. um mês completo.<br><span style="font-weight:500; opacity:.9;">Fonte: aba EXPORT (todas as vendas por corretora). O Desempenho Comercial usa a aba META, que conta apenas as categorias com meta — por isso os totais das duas abas não são iguais.</span></span>
-    </div>
-
     <div class="filter-bar">
       <div class="f-group">
         <label>Equipe</label>
@@ -5402,7 +5398,6 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
 
     // Segmento ativo desabilita comparação (só temos mês atual por segmento)
     const segActive = seg !== 't';
-    document.getElementById('rankPartialBanner').style.display = segActive ? 'none' : 'flex';
 
     // KPIs
     const deltaTxt = segActive ? '<span class="ek-note" style="color:var(--muted)">comparação só no total</span>'
