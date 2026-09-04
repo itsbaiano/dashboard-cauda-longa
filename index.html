@@ -948,7 +948,8 @@
   [data-theme="dark"] #btnPublishGithub,
   [data-theme="dark"] #btnCopyResumo,
   [data-theme="dark"] #mjExpandAllBtn,
-  [data-theme="dark"] #rkmPdfBtn,
+  [data-theme="dark"] #rkmVerPendBtn,
+  [data-theme="dark"] #pendPdfBtn,
   [data-theme="dark"] #cqBadge{
     background:#26346F !important; border-color:#26346F !important;
   }
@@ -1489,7 +1490,10 @@
         <label>Filtrar por Status <span id="pendStatusClear" style="font-weight:400; color:var(--blue); cursor:pointer; display:none; margin-left:6px;">(limpar)</span></label>
         <div id="pendStatusChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;"></div>
       </div>
-      <div id="pendBeneficiariosTotal" style="margin-top:10px; font-size:13px; color:var(--navy); font-weight:700;"></div>
+      <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div id="pendBeneficiariosTotal" style="font-size:13px; color:var(--navy); font-weight:700;"></div>
+        <button id="pendPdfBtn" class="btn-reset" style="background:var(--navy); color:#fff; border-color:var(--navy); padding:8px 14px; border-radius:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;"><i class=ic-doc></i> Baixar relatório</button>
+      </div>
       <div id="pendPmeSection">
         <div class="table-wrap pend-scroll" style="margin-top:12px;">
           <table>
@@ -2362,25 +2366,12 @@
       <div style="padding:20px 24px 24px;">
         <div id="rkmBody"></div>
         <div id="rkmPdfBox" style="border-top:1px solid var(--line); margin-top:20px; padding-top:18px;">
-          <div style="font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px;">Relatório de propostas</div>
-          <div id="rkmPropInfo" style="font-size:12px; color:var(--muted); margin-bottom:12px;"></div>
-          <div class="f-group" style="margin-bottom:14px;">
-            <label>Mês de vigência</label>
-            <select id="rkmMes" class="ic-left ic-clock" multiple size="5"></select>
-            <div style="font-size:10.5px; color:var(--muted); margin-top:4px;">Segure Ctrl (⌘ no Mac) e clique pra escolher mais de um mês · nenhum selecionado = todos os meses.</div>
-          </div>
-          <div class="f-group" style="margin-bottom:14px;">
-            <label style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-              <span>Status das propostas</span>
-              <span style="font-weight:600; text-transform:none; letter-spacing:0;">
-                <a href="#" id="rkmStPend" style="color:var(--accent-coral); text-decoration:none; font-size:10.5px;">só pendências</a>
-                <span style="color:var(--line);">|</span>
-                <a href="#" id="rkmStAll" style="color:var(--primary-light); text-decoration:none; font-size:10.5px;">todos</a>
-              </span>
-            </label>
-            <div id="rkmStatusBox" class="rkm-status"></div>
-          </div>
-          <button id="rkmPdfBtn" class="btn-reset" style="background:var(--navy); color:#fff; border-color:var(--navy); width:100%;"><i class=ic-doc></i> Baixar relatório</button>
+          <!-- Achado 2026-09-04: nome de corretora não é confiável entre o extrato de vendas
+               (aqui) e o funil de pendências (Planium) — "AFFINITY" vendida como QUALI PLANOS
+               no BI, registrada como F8 no funil, por ex. Gestor os dois concordam, então a
+               pendência real dessa corretora se busca por gestor, no modal de Pendências. -->
+          <p style="font-size:12px; color:var(--muted); margin-bottom:12px; line-height:1.5;">O nome da corretora no extrato de vendas nem sempre é o mesmo do funil de pendências (Planium). Pendências ficam por gestor — mais confiável.</p>
+          <button id="rkmVerPendBtn" class="btn-reset" style="background:var(--navy); color:#fff; border-color:var(--navy); width:100%;"><i class=ic-clip></i> Ver pendências de <span id="rkmVerPendGestor"></span></button>
         </div>
       </div>
     </div>
@@ -2964,6 +2955,9 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   let pendCurrentGestor = null;
   let pendActiveTab = 'pme';
   let pendSelectedStatuses = new Set();
+  // Guarda o resultado filtrado do último render — "Baixar relatório" usa exatamente o que
+  // está na tela (gestor + mês + corretora + status já aplicados), sem recalcular nada.
+  let pendLastPmeFiltered = [], pendLastPfFiltered = [];
   // Ordena por Beneficiários (PME) / Vidas (PF) — maior pro menor por padrão, clique no
   // cabeçalho inverte. Sem isso a lista vinha na ordem que chegou do arquivo, então um
   // contrato pequeno podia aparecer no meio de vários grandes sem nenhum padrão visível.
@@ -3044,6 +3038,11 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       .sort((a,b) => pendSortDir * ((a.beneficiarios||0) - (b.beneficiarios||0)));
     const pfFiltered = pf.filter(p => (!activeMonth || pendMonthOf(p.dataStatus) === activeMonth) && (!activeCorretora || p.corretora === activeCorretora) && (pendActiveTab !== 'pf' || pendSelectedStatuses.size === 0 || statusesOf(p).some(s=>pendSelectedStatuses.has(s))) && (!searchRaw || String(p.orcamento||'').toLowerCase().indexOf(searchRaw) >= 0))
       .sort((a,b) => pendSortDir * ((a.vidas||0) - (b.vidas||0)));
+    pendLastPmeFiltered = pmeFiltered;
+    pendLastPfFiltered = pfFiltered;
+    document.getElementById('pendPdfBtn').disabled = pendActiveTab === 'pme' ? !pmeFiltered.length : !pfFiltered.length;
+    document.getElementById('pendPdfBtn').style.opacity = document.getElementById('pendPdfBtn').disabled ? '.5' : '';
+    document.getElementById('pendPdfBtn').style.cursor = document.getElementById('pendPdfBtn').disabled ? 'default' : 'pointer';
 
     document.getElementById('pendCountPme').textContent = pmeFiltered.reduce((s,p)=>s+(p.beneficiarios||0),0);
     document.getElementById('pendCountPf').textContent = pfFiltered.reduce((s,p)=>s+(p.vidas||0),0);
@@ -3087,6 +3086,112 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   document.getElementById('pendMonthFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendCorretoraFilter').addEventListener('change', renderPendencias);
   document.getElementById('pendPropostaSearch').addEventListener('input', renderPendencias);
+
+  // "Baixar relatório" — mesmo padrão de PDF-via-HTML do Ranking (rkmGerarPDF, removido em
+  // 2026-09-04: casava por nome de corretora entre extrato de vendas e funil, o que não é
+  // confiável — "AFFINITY" vendida como QUALI PLANOS no BI, registrada como F8 no Planium).
+  // Aqui não tem esse problema: já está tudo filtrado por GESTOR (que os dois sistemas
+  // concordam), então baixa exatamente o que está na tela — sem tentar casar nome nenhum.
+  function pendGerarPDF(){
+    if (!pendCurrentGestor) return;
+    const isPme = pendActiveTab === 'pme';
+    const rows = (isPme ? pendLastPmeFiltered : pendLastPfFiltered).slice();
+    if (!rows.length) return;
+    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const dataBR = iso => iso ? String(iso).split('-').reverse().join('/') : '—';
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const fmtN = n => Math.round(n||0).toLocaleString('pt-BR');
+    const stColor = st => {
+      const s = String(st||'').toLowerCase();
+      if (s.indexOf('implant')>=0 || s.indexOf('concluid')>=0 || s.indexOf('liberad')>=0 || s.indexOf('assinado')>=0 || s.indexOf('processado')>=0) return '#16B87A';
+      if (s.indexOf('pend')>=0) return '#F26B21';
+      if (s.indexOf('cancel')>=0 || s.indexOf('recusad')>=0 || s.indexOf('devolv')>=0) return '#F5364A';
+      return '#56608F';
+    };
+    if (isPme) rows.sort((a,b) => (b.dataVigencia||'').localeCompare(a.dataVigencia||''));
+    else rows.sort((a,b) => (b.dataStatus||'').localeCompare(a.dataStatus||''));
+    const total = rows.reduce((s,p)=>s+(isPme?(p.beneficiarios||0):(p.vidas||0)), 0);
+    const mesFiltroTxt = document.getElementById('pendMonthFilter').value || 'Todos os meses';
+    const corFiltroTxt = document.getElementById('pendCorretoraFilter').value || 'Todas as corretoras';
+    const stsFiltroTxt = pendSelectedStatuses.size ? [...pendSelectedStatuses].join(', ') : 'Todos os status';
+
+    const linhas = isPme ? rows.map(p => `<tr>
+      <td>${esc(p.proposta)}</td>
+      <td>${esc(p.corretora)}</td>
+      <td class="c">${dataBR(p.dataReceb)}</td>
+      <td class="c">${dataBR(p.dataVigencia)}</td>
+      <td class="c"><span class="st" style="color:${stColor(p.status.planium)};border-color:${stColor(p.status.planium)}33;background:${stColor(p.status.planium)}14;">${esc(p.status.planium)||'—'}</span></td>
+      <td class="c">${esc(p.status.cadastro) || '—'}</td>
+      <td class="c">${esc(p.status.ditec) || '—'}</td>
+      <td class="c">${esc(p.status.bitix) || '—'}</td>
+      <td class="c b">${p.beneficiarios||0}</td>
+    </tr>`).join('') : rows.map(p => `<tr>
+      <td>${esc(p.orcamento)}</td>
+      <td>${esc(p.corretora)}</td>
+      <td class="c">${dataBR(p.dataStatus)}</td>
+      <td class="c"><span class="st" style="color:${stColor(p.status)};border-color:${stColor(p.status)}33;background:${stColor(p.status)}14;">${esc(p.status)||'—'}</span></td>
+      <td class="c b">${p.vidas||0}</td>
+    </tr>`).join('');
+    const headers = isPme
+      ? `<th style="width:10%">Proposta</th><th style="width:23%">Corretora</th><th style="width:10%;text-align:center">Recebido</th><th style="width:10%;text-align:center">Vigência</th><th style="width:14%;text-align:center">Planium</th><th style="width:12%;text-align:center">Cadastro</th><th style="width:8%;text-align:center">DITEC</th><th style="width:8%;text-align:center">BITIX</th><th style="width:5%;text-align:center">Vidas</th>`
+      : `<th style="width:13%">Orçamento</th><th style="width:32%">Corretora</th><th style="width:17%;text-align:center">Data Status</th><th style="width:20%;text-align:center">Status</th><th style="width:8%;text-align:center">Vidas</th>`;
+    const colspanTotal = isPme ? 8 : 4;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Pendências ${isPme?'PME':'PF'} — ${esc(pendCurrentGestor)}</title>
+<style>
+@page{size:A4 portrait;margin:10mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#131C4F;font-size:9px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1D33A8;padding-bottom:8px;margin-bottom:12px}
+.hd h1{font-size:15px;color:#101E63;letter-spacing:-.3px}
+.hd .sb{font-size:10px;color:#56608F;margin-top:3px}
+.hd .rt{text-align:right;font-size:8.5px;color:#56608F;line-height:1.5}
+.hd .rt b{color:#101E63;font-size:10px}
+.kp{display:flex;gap:8px;margin-bottom:12px}
+.kp div{flex:1;border:1px solid #E3E9F8;border-radius:7px;padding:7px 9px;background:#F8FAFF}
+.kp .l{font-size:7.5px;font-weight:700;color:#56608F;text-transform:uppercase;letter-spacing:.4px}
+.kp .v{font-size:14px;font-weight:800;color:#101E63;margin-top:2px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{background:#101E63;color:#fff;font-size:7px;text-transform:uppercase;letter-spacing:.3px;padding:5px 4px;text-align:left}
+td{padding:4px;border-bottom:1px solid #E8EDF7;font-size:8px;overflow-wrap:break-word}
+tr:nth-child(even) td{background:#F8FAFF}
+td.c{text-align:center}td.b{font-weight:700}
+.st{display:inline-block;padding:1px 5px;border-radius:20px;border:1px solid;font-size:7px;font-weight:700;text-transform:capitalize;white-space:nowrap}
+tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #1D33A8}
+.ft{margin-top:12px;font-size:7.5px;color:#8B93B8;border-top:1px solid #E3E9F8;padding-top:6px;display:flex;justify-content:space-between}
+@media print{.noprint{display:none}}
+.noprint{position:fixed;top:10px;right:10px;background:#1D33A8;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+</style></head><body>
+<button class="noprint" onclick="window.print()">🖨️ Salvar como PDF (Ctrl+P)</button>
+<div class="hd">
+  <div><h1>Relatório de Pendências ${isPme?'PME/SS':'PF'}</h1><div class="sb">${esc(pendCurrentGestor)}</div></div>
+  <div class="rt"><b>Hapvida NDI SP</b><br>Corretora: ${esc(corFiltroTxt)} · Mês: ${esc(mesFiltroTxt)}<br>Status: ${esc(stsFiltroTxt)}<br>Emitido em ${hoje}</div>
+</div>
+<div class="kp">
+  <div><div class="l">Registros</div><div class="v">${rows.length}</div></div>
+  <div><div class="l">Vidas</div><div class="v">${fmtN(total)}</div></div>
+</div>
+<table>
+  <thead><tr>${headers}</tr></thead>
+  <tbody>${linhas}</tbody>
+  <tfoot><tr><td colspan="${colspanTotal}">Total — ${rows.length} registro(s)</td><td class="c">${fmtN(total)}</td></tr></tfoot>
+</table>
+<div class="ft"><span>Hapvida NotreDame Intermédica · Diretoria Regional SP · NDI SP</span><span>Fonte: Relatório ${isPme?'PME (PLANIUM)':'PF'} · Documento gerado automaticamente</span></div>
+</body></html>`;
+    try {
+      const blob = new Blob(['﻿' + html], {type:'text/html;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const nomeArq = 'Pendencias_' + (isPme?'PME':'PF') + '_' + String(pendCurrentGestor).replace(/[^A-Za-z0-9]+/g,'_').slice(0,40) + '.html';
+      const a = document.createElement('a');
+      a.href = url; a.download = nomeArq;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 10000);
+    } catch(err){
+      alert('Erro ao gerar o arquivo: ' + err.message);
+    }
+  }
+  document.getElementById('pendPdfBtn').addEventListener('click', pendGerarPDF);
+
   document.querySelectorAll('#pendModal thead th[data-k]').forEach(th => {
     th.addEventListener('click', () => {
       pendSortDir *= -1;
@@ -5627,13 +5732,29 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       ${totalMix>0 ? mixRow('Individual', r.ind||0, '#16B87A') + mixRow('PIM (3-29 vidas)', r.pim||0, '#2E52D4') + mixRow('Middle / PME', r.mid||0, '#F26B21') + mixRow('Administradora', r.adm||0, '#FFB81C') : '<div style="font-size:12px; color:var(--muted);">Sem detalhamento de produto neste mês.</div>'}`;
 
     document.getElementById('rkModalOverlay').style.display = 'flex';
-    rkmSetupPropostas(r);
+    // Achado 2026-09-04: o nome de corretora do extrato de vendas (aqui) e o do funil
+    // (PENDENCIAS_PME/PF) às vezes são coisas diferentes de verdade pro mesmo cliente — ex.:
+    // "AFFINITY" vendida como QUALI PLANOS no BI, mas registrada como F8 no Planium. Tentar
+    // casar por nome de corretora entre os dois sistemas não é confiável (já vazou duas
+    // vezes: truncamento de nome, e agora corretora diferente pra valer). Gestor os dois
+    // sistemas concordam, então a ponte pras pendências é por ali, não por nome de corretora
+    // — mesmo padrão já usado em openConversaoDetail (window.showPendenciasModal(gestor)).
+    const btnPend = document.getElementById('rkmVerPendBtn');
+    if (r.g){
+      btnPend.style.display = '';
+      document.getElementById('rkmVerPendGestor').textContent = r.g;
+      btnPend.onclick = () => {
+        document.getElementById('rkModalOverlay').style.display = 'none';
+        if (window.showPendenciasModal) window.showPendenciasModal(r.g);
+      };
+    } else {
+      btnPend.style.display = 'none';
+    }
   }
 
   // ---- Propostas (aba PLANIUM) por corretora ----
   const rkNormName = s => String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/\b(LTDA|ME|EPP|EIRELI|S\/?A|SA|CORRETORA|DE|SEGUROS|E)\b/g,'').replace(/[^A-Z0-9]/g,'');
-  let rkmCurrent = null;
   const MES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const mesLabel = ym => { const [y,m] = ym.split('-'); return `${MES_NOMES[parseInt(m,10)-1]}/${y.slice(2)}`; };
   // "YYYY-MM" um mês antes/depois — usado pra deduzir o rótulo do "mês anterior" do Ranking
@@ -5644,304 +5765,6 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
   };
 
-  function propostasDaCorretora(nomeCorretora){
-    // Antes vinha de PROPOSTAS (export solto do Planium, sem o funil de verdade) — trocado
-    // pra PENDENCIAS_PME (o funil real: Planium → Cadastro → DITEC → BITIX), a mesma fonte
-    // que já alimenta o modal de "Pendências" por gestor (aliás o rodapé do PDF abaixo já
-    // dizia "Fonte: Relatório PME (PLANIUM)" mesmo quando a fonte de verdade era outra —
-    // intenção original nunca cumprida). Achado 2026-09-04, corretora F8 CORRETORA DE
-    // SEGUROS VIDA E BENEFICIOS LTDA: PROPOSTAS dava 34 "pendência" somando todos os meses,
-    // ou só 2 com o filtro de mês padrão (ver rkmSetupPropostas) — nenhum batia com a
-    // realidade. PENDENCIAS_PME dá 29, confirmado por Victor como o número certo.
-    // PENDENCIAS_PF fica de fora por enquanto — vocabulário de status bem diferente
-    // (RECUSADO/PROCESSADO/ASSINADO/AGUARDANDO PG...), mapear errado pro funil Planium seria
-    // pior que não mapear; sem impacto na F8 (ela não tem nenhuma linha em PF).
-    //
-    // PENDENCIAS_PME vive numa IIFE anterior (~linha 2470) e não é visível aqui por escopo
-    // léxico — usa o getter já exposto em window pra ASSINATURA (mesma necessidade), que
-    // devolve o valor atual mesmo depois de um reimport (fecha sobre a variável, não uma
-    // cópia estática).
-    const pmeData = (window.getPendenciasData ? window.getPendenciasData().pme : null) || {};
-    const alvo = rkNormName(nomeCorretora);
-    if (!alvo) return [];
-    const out = [];
-    Object.keys(pmeData).forEach(gestor => {
-      (pmeData[gestor] || []).forEach(row => {
-        const n = rkNormName(row.corretora);
-        if (!n || !(n === alvo || n.indexOf(alvo) === 0 || alvo.indexOf(n) === 0)) return;
-        if (!row.dataVigencia) return; // rkmFiltrar exige vg.slice(0,7) — descarta linha sem vigência
-        const st = row.status || {};
-        out.push({
-          p: row.proposta, vg: row.dataVigencia, dr: row.dataReceb, st: st.planium || '',
-          ca: st.cadastro || '', di: st.ditec || '', bx: st.bitix || '',
-          bn: row.beneficiarios || 0, gestor,
-        });
-      });
-    });
-    return out;
-  }
-
-  // Configuração dos status (rótulo, cor e se conta como "precisa de ação")
-  const RKM_STATUS = [
-    {k:'pendencia',  label:'Pendência',  cor:'#F26B21', acao:true},
-    {k:'devolvida',  label:'Devolvida',  cor:'#F5364A', acao:true},
-    {k:'analise',    label:'Em análise', cor:'#FFB81C', acao:true},
-    {k:'implantada', label:'Implantada', cor:'#16B87A', acao:false},
-    {k:'cancelada',  label:'Cancelada',  cor:'#8B93B8', acao:false},
-  ];
-  const rkmStatusKey = st => {
-    const v = String(st||'').toLowerCase();
-    if (v.indexOf('implant') >= 0) return 'implantada';
-    if (v.indexOf('pend') >= 0) return 'pendencia';
-    if (v.indexOf('devolv') >= 0) return 'devolvida';
-    if (v.indexOf('analis') >= 0 || v.indexOf('anális') >= 0) return 'analise';
-    if (v.indexOf('cancel') >= 0) return 'cancelada';
-    return 'outros';
-  };
-  function rkmStatusSelecionados(){
-    return [...document.querySelectorAll('#rkmStatusBox input:checked')].map(i=>i.value);
-  }
-  // Nenhum mês marcado = todos os meses (mesmo sentido de antes, quando "Todos os meses"
-  // era uma opção própria) — agora que o select aceita mais de um (Ctrl+clique), uma lista
-  // vazia já cobre esse caso sozinha, sem precisar de uma opção especial pra isso.
-  function rkmMesesSelecionados(){
-    return [...document.getElementById('rkmMes').selectedOptions].map(o=>o.value).filter(Boolean);
-  }
-  function rkmFiltrar(props){
-    const mvs = rkmMesesSelecionados();
-    const sts = rkmStatusSelecionados();
-    return props.filter(p => {
-      if (mvs.length && mvs.indexOf(p.vg.slice(0,7)) < 0) return false;
-      if (sts.length && sts.indexOf(rkmStatusKey(p.st)) < 0) return false;
-      return true;
-    });
-  }
-
-  function rkmSetupPropostas(r){
-    rkmCurrent = r;
-    const props = propostasDaCorretora(r.n);
-    const sel = document.getElementById('rkmMes');
-    const info = document.getElementById('rkmPropInfo');
-    const btn = document.getElementById('rkmPdfBtn');
-    const box = document.getElementById('rkmStatusBox');
-    if (!props.length){
-      sel.innerHTML = '<option value="">—</option>';
-      sel.disabled = true; btn.disabled = true; btn.style.opacity = '.5'; btn.style.cursor = 'default';
-      box.innerHTML = '';
-      info.innerHTML = 'Nenhuma proposta encontrada para esta corretora no relatório PME.';
-      return;
-    }
-    sel.disabled = false; btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer';
-
-    const meses = [...new Set(props.map(p=>p.vg && p.vg.slice(0,7)).filter(Boolean))].sort().reverse();
-    // Sem opção "Todos os meses" própria — nesse select (agora de múltipla escolha, Ctrl+clique)
-    // nenhum mês marcado já significa "todos", então essa opção extra só ia confundir junto
-    // com meses de verdade na mesma lista.
-    sel.innerHTML = meses.map(m => { const q = props.filter(p=>p.vg.slice(0,7)===m).length; return `<option value="${m}">${mesLabel(m)} (${q})</option>`; }).join('');
-    // Mantém o mesmo padrão de antes (mês mais recente pré-selecionado ao abrir) — só que
-    // agora marcando a opção diretamente, já que atribuir .value não é confiável num select
-    // de múltipla escolha.
-    if (meses.length){ const first = sel.querySelector(`option[value="${meses[0]}"]`); if (first) first.selected = true; }
-
-    // Checkboxes de status — só os que existem para esta corretora
-    const cont = {};
-    props.forEach(p => { const k = rkmStatusKey(p.st); cont[k] = (cont[k]||0)+1; });
-    box.innerHTML = RKM_STATUS.filter(s2 => cont[s2.k]).map(s2 =>
-      `<label class="rkm-st on" style="--st-c:${s2.cor}; --st-bg:${s2.cor}1a;" data-k="${s2.k}">
-         <input type="checkbox" value="${s2.k}" checked> ${s2.label} <span class="st-n">${cont[s2.k]}</span>
-       </label>`).join('');
-
-    const atualiza = () => {
-      const mvs = rkmMesesSelecionados();
-      // O número ao lado de cada status (ex.: "Pendência 1") mostrava sempre o total em TODOS
-      // os meses, mesmo com mês(es) específico(s) selecionado(s) — parecia contradizer o total
-      // de propostas do mês (ex.: via "Pendência 1 + Em análise 2" alguém esperava 3, mas o mês
-      // tinha 19 porque o resto era de outros status). Recalcula pro(s) mês(es) escolhido(s), ou
-      // o total geral mesmo quando for "todos os meses" (nada marcado).
-      const escopoMes = mvs.length ? props.filter(p => p.vg && mvs.indexOf(p.vg.slice(0,7)) >= 0) : props;
-      const contMes = {};
-      escopoMes.forEach(p => { const k = rkmStatusKey(p.st); contMes[k] = (contMes[k]||0)+1; });
-      box.querySelectorAll('.rkm-st').forEach(l => {
-        const span = l.querySelector('.st-n');
-        if (span) span.textContent = contMes[l.dataset.k] || 0;
-      });
-      box.querySelectorAll('.rkm-st').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
-      const lista = rkmFiltrar(props);
-      const vidas = lista.reduce((s2,p)=>s2+(p.bn||0),0);
-      const nSt = rkmStatusSelecionados().length, totSt = box.querySelectorAll('input').length;
-      const semStatus = nSt === 0;
-      btn.disabled = semStatus || !lista.length;
-      btn.style.opacity = btn.disabled ? '.5' : '';
-      btn.style.cursor = btn.disabled ? 'default' : 'pointer';
-      const mesesTxt = mvs.map(mesLabel).join(', ');
-      // "0 proposta(s)" sozinho não deixava claro POR QUE (geralmente é o filtro de mês ainda
-      // ativo, sobrando de uma seleção anterior, escondendo pendências que existem só em outro
-      // mês) — sem essa dica, o botão só ficava desabilitado sem explicação visível.
-      info.innerHTML = semStatus
-        ? '<span style="color:var(--accent-coral);">Selecione ao menos um status.</span>'
-        : (!lista.length && mvs.length
-            ? `<span style="color:var(--accent-coral);">Nenhuma proposta com esse status em ${mesesTxt}. <a href="#" id="rkmVerTodosMeses" style="color:var(--primary-light); text-decoration:underline;">Ver todos os meses</a></span>`
-            : `<b>${lista.length}</b> proposta(s) · <b>${rkFmt(vidas)}</b> vida(s)${mvs.length?' com vigência em '+mesesTxt:''}${nSt<totSt?' · filtrado por status':''}.`);
-      const verTodos = document.getElementById('rkmVerTodosMeses');
-      if (verTodos) verTodos.onclick = (e) => { e.preventDefault(); [...sel.options].forEach(o=>o.selected=false); atualiza(); };
-    };
-    // Marcar/desmarcar um status manualmente (clicando direto no checkbox, sem usar o link
-    // "só pendências") tinha o mesmo problema: ficava preso no(s) mês(es) que já estava(m)
-    // selecionado(s). Aqui, sempre que a MUDANÇA DE STATUS (não a troca manual de mês) resultar
-    // em zero propostas só por causa do mês, limpa a seleção de mês sozinho pra "todos os
-    // meses" — ninguém marca um status esperando ver "0 propostas" só porque o filtro de mês
-    // ficou de uma seleção anterior.
-    const statusMudou = () => {
-      const mvs = rkmMesesSelecionados();
-      if (mvs.length){
-        const comMes = rkmFiltrar(props).length;
-        const semMesLista = props.filter(p => {
-          const sts = rkmStatusSelecionados();
-          return !sts.length || sts.indexOf(rkmStatusKey(p.st)) >= 0;
-        });
-        if (!comMes && semMesLista.length) [...sel.options].forEach(o=>o.selected=false);
-      }
-      atualiza();
-    };
-    sel.onchange = atualiza;
-    box.querySelectorAll('input').forEach(i => i.addEventListener('change', statusMudou));
-    document.getElementById('rkmStPend').onclick = (e) => {
-      e.preventDefault();
-      if (!box.querySelectorAll('input').length) return; // sem propostas pra essa corretora, nada a filtrar
-      box.querySelectorAll('input').forEach(i => {
-        const cfg = RKM_STATUS.find(x=>x.k===i.value);
-        i.checked = !!(cfg && cfg.acao);
-      });
-      // "Só pendências" quer mostrar TUDO que precisa de ação, não só o que caiu no(s) mês(es)
-      // que por acaso estava(m) selecionado(s) — sem isso, uma corretora com pendências só em
-      // outro mês ficava com filtro zerado e o botão de baixar desabilitado sem nada visível.
-      [...sel.options].forEach(o=>o.selected=false);
-      atualiza();
-    };
-    document.getElementById('rkmStAll').onclick = (e) => {
-      e.preventDefault();
-      if (!box.querySelectorAll('input').length) return;
-      box.querySelectorAll('input').forEach(i => i.checked = true);
-      atualiza();
-    };
-    atualiza();
-  }
-
-  function rkmGerarPDF(){
-    if (!rkmCurrent) return;
-    const r = rkmCurrent;
-    const mvs = rkmMesesSelecionados();
-    let props = rkmFiltrar(propostasDaCorretora(r.n));
-    if (!props.length) return;
-    // Descrição dos status incluídos, para o cabeçalho do relatório
-    const stsSel = rkmStatusSelecionados();
-    const totalSt = document.querySelectorAll('#rkmStatusBox input').length;
-    const stsTxt = (stsSel.length && stsSel.length < totalSt)
-      ? stsSel.map(k => (RKM_STATUS.find(x=>x.k===k)||{}).label || k).join(', ')
-      : 'Todos os status';
-    props.sort((a,b)=> (b.vg||'').localeCompare(a.vg||''));
-    const vidasTot = props.reduce((s,p)=>s+(p.bn||0),0);
-    const dataBR = iso => iso ? iso.split('-').reverse().join('/') : '—';
-    const hoje = new Date().toLocaleDateString('pt-BR');
-    const esc = t => String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const stColor = st => {
-      const s = String(st).toLowerCase();
-      if (s.indexOf('implant')>=0) return '#16B87A';
-      if (s.indexOf('pend')>=0) return '#F26B21';
-      if (s.indexOf('cancel')>=0) return '#F5364A';
-      if (s.indexOf('devolv')>=0) return '#F5364A';
-      return '#56608F';
-    };
-    // PENDENCIAS_PME não tem empresa/CNPJ/vendedor (essas colunas existiam quando a fonte
-    // era PROPOSTAS) — em troca dá as 3 etapas do funil depois do Planium, o que serve mais
-    // pra quem vai de fato resolver a pendência (o motivo de baixar o relatório).
-    const linhas = props.map(p => `<tr>
-      <td>${esc(p.p)}</td>
-      <td class="c">${dataBR(p.dr)}</td>
-      <td class="c">${dataBR(p.vg)}</td>
-      <td class="c"><span class="st" style="color:${stColor(p.st)};border-color:${stColor(p.st)}33;background:${stColor(p.st)}14;">${esc(p.st)||'—'}</span></td>
-      <td class="c">${esc(p.ca) || '—'}</td>
-      <td class="c">${esc(p.di) || '—'}</td>
-      <td class="c">${esc(p.bx) || '—'}</td>
-      <td class="c b">${p.bn||0}</td>
-    </tr>`).join('');
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Propostas — ${esc(r.n)}</title>
-<style>
-/* Retrato (não paisagem) de propósito — a caixa de impressão do navegador nem sempre respeita
-   "@page landscape" sozinha (fica dependendo do usuário trocar manualmente a orientação na
-   caixa de diálogo), o que fazia o conteúdo sair torto/cortado. Retrato é o padrão universal,
-   então sai certo sem precisar mexer em nada na hora de imprimir/salvar como PDF. */
-@page{size:A4 portrait;margin:10mm}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;color:#131C4F;font-size:9px}
-.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1D33A8;padding-bottom:8px;margin-bottom:12px}
-.hd h1{font-size:15px;color:#101E63;letter-spacing:-.3px}
-.hd .sb{font-size:10px;color:#56608F;margin-top:3px}
-.hd .rt{text-align:right;font-size:8.5px;color:#56608F;line-height:1.5}
-.hd .rt b{color:#101E63;font-size:10px}
-.kp{display:flex;gap:8px;margin-bottom:12px}
-.kp div{flex:1;border:1px solid #E3E9F8;border-radius:7px;padding:7px 9px;background:#F8FAFF}
-.kp .l{font-size:7.5px;font-weight:700;color:#56608F;text-transform:uppercase;letter-spacing:.4px}
-.kp .v{font-size:14px;font-weight:800;color:#101E63;margin-top:2px}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-th{background:#101E63;color:#fff;font-size:7px;text-transform:uppercase;letter-spacing:.3px;padding:5px 4px;text-align:left}
-td{padding:4px;border-bottom:1px solid #E8EDF7;font-size:8px;overflow-wrap:break-word}
-tr:nth-child(even) td{background:#F8FAFF}
-td.c{text-align:center}td.b{font-weight:700}
-.st{display:inline-block;padding:1px 5px;border-radius:20px;border:1px solid;font-size:7px;font-weight:700;text-transform:capitalize;white-space:nowrap}
-tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #1D33A8}
-.ft{margin-top:12px;font-size:7.5px;color:#8B93B8;border-top:1px solid #E3E9F8;padding-top:6px;display:flex;justify-content:space-between}
-@media print{.noprint{display:none}}
-.noprint{position:fixed;top:10px;right:10px;background:#1D33A8;color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,.2)}
-</style></head><body>
-<button class="noprint" onclick="window.print()">🖨️ Salvar como PDF (Ctrl+P)</button>
-<div class="hd">
-  <div><h1>Relatório de Propostas</h1><div class="sb">${esc(r.n)}</div></div>
-  <div class="rt"><b>Hapvida NDI SP</b><br>${esc(r.e==='—'?'':r.e)} · ${esc(rkShortGestor(r.g))}<br>${mvs.length ? 'Vigência: '+esc(mvs.map(mesLabel).join(', ')) : 'Todas as vigências'} · ${esc(stsTxt)}<br>Emitido em ${hoje}</div>
-</div>
-<div class="kp">
-  <div><div class="l">Propostas</div><div class="v">${props.length}</div></div>
-  <div><div class="l">Vidas</div><div class="v">${rkFmt(vidasTot)}</div></div>
-  <div><div class="l">Implantadas</div><div class="v">${props.filter(p=>String(p.st).toLowerCase().indexOf('implant')>=0).length}</div></div>
-  <div><div class="l">Em análise / pendência</div><div class="v">${props.filter(p=>{const s=String(p.st).toLowerCase();return s.indexOf('analise')>=0||s.indexOf('pend')>=0;}).length}</div></div>
-</div>
-<table>
-  <thead><tr>
-    <th style="width:11%">Proposta</th>
-    <th style="width:12%;text-align:center">Recebido</th>
-    <th style="width:12%;text-align:center">Vigência</th>
-    <th style="width:16%;text-align:center">Planium</th>
-    <th style="width:16%;text-align:center">Cadastro</th>
-    <th style="width:12%;text-align:center">DITEC</th>
-    <th style="width:12%;text-align:center">BITIX</th>
-    <th style="width:9%;text-align:center">Vidas</th>
-  </tr></thead>
-  <tbody>${linhas}</tbody>
-  <tfoot><tr><td colspan="7">Total — ${props.length} proposta(s)</td><td class="c">${rkFmt(vidasTot)}</td></tr></tfoot>
-</table>
-<div class="ft"><span>Hapvida NotreDame Intermédica · Diretoria Regional SP · NDI SP</span><span>Fonte: Relatório PME (PLANIUM) · Documento gerado automaticamente</span></div>
-
-</body></html>`;
-    // Baixa como arquivo .html (abre no navegador e imprime como PDF) — não depende de pop-up
-    try {
-      const blob = new Blob(['\ufeff' + html], {type:'text/html;charset=utf-8'});
-      const url = URL.createObjectURL(blob);
-      const sufSt = (stsSel.length && stsSel.length < totalSt) ? '_' + stsSel.join('-') : '';
-      const sufMes = mvs.length ? '_' + mvs.slice().sort().join('-') : '';
-      const nomeArq = 'Propostas_' + String(r.n).replace(/[^A-Za-z0-9]+/g,'_').slice(0,40) + sufMes + sufSt + '.html';
-      const a = document.createElement('a');
-      a.href = url; a.download = nomeArq;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url), 10000);
-      const info = document.getElementById('rkmPropInfo');
-      const antes = info.innerHTML;
-      info.innerHTML = '<span style="color:#1b7a63;font-weight:700;">Arquivo baixado. Abra-o e use Ctrl+P → "Salvar como PDF".</span>';
-      setTimeout(()=>{ info.innerHTML = antes; }, 6000);
-    } catch(err){
-      document.getElementById('rkmPropInfo').innerHTML = '<span style="color:var(--red);">Erro ao gerar o arquivo: ' + err.message + '</span>';
-    }
-  }
-  document.getElementById('rkmPdfBtn').addEventListener('click', rkmGerarPDF);
   document.getElementById('rkmClose').addEventListener('click', ()=>{ document.getElementById('rkModalOverlay').style.display='none'; });
   document.getElementById('rkModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='rkModalOverlay') document.getElementById('rkModalOverlay').style.display='none'; });
 
@@ -6274,7 +6097,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // Corretora com proposta real em aberto no Planium (PROPOSTAS) mas zero venda no mês
     // atual E no anterior nunca ganhava linha aqui — RANKDATA só nasce da aba EXPORT (só
     // quem vendeu), então ela ficava sem linha na tabela do Ranking, e clicar numa linha é
-    // o único jeito de abrir "Propostas desta corretora" (rkmSetupPropostas). Caso real
+    // o que dá acesso ao botão "Ver pendências de [gestor]" (ver rankShowDetail). Caso real
     // achado 2026-09-04: código 0540, F8 CORRETORA DE SEGUROS VIDA E BENEFICIOS LTDA —
     // fluxo real de propostas, zero venda em 20 meses, gestora Camila Alves Pertinhez
     // (PLATAFORMA SP, gestora válida da diretoria) — inacessível no Ranking por causa
@@ -6283,10 +6106,9 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // quem tem proposta de verdade rodando, pra não virar milhares de linhas com 0 vidas.
     if (window.CARTEIRA_MAP && typeof PROPOSTAS !== 'undefined' && PROPOSTAS.length){
       const propostasNormList = [...new Set(PROPOSTAS.map(p => rkNormName(p.co)).filter(Boolean))];
-      // Prefixo, não igualdade — mesma regra de propostasDaCorretora (a razão social do
-      // Planium e a da Carteira nem sempre batem char-a-char: achado real testando a
-      // própria F8, "...VIDA E BENEFIC LTDA" no Planium x "...VIDA E BENEFICIOS LTDA" na
-      // Carteira).
+      // Prefixo, não igualdade — a razão social do Planium e a da Carteira nem sempre
+      // batem char-a-char: achado real testando a própria F8, "...VIDA E BENEFIC LTDA" no
+      // Planium x "...VIDA E BENEFICIOS LTDA" na Carteira.
       const hasPropostaReal = razao => {
         const n = rkNormName(razao);
         return n && propostasNormList.some(pn => pn === n || pn.indexOf(n) === 0 || n.indexOf(pn) === 0);
