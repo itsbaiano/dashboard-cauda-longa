@@ -3820,6 +3820,9 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     return {de, atraso, label: atraso===0?'No prazo':atraso<=2?'Atenção':'Crítico'};
   }
   const GESTOR_EQUIPE = {"VENDA INTERNA": "VENDA INTERNA", "PATRICIA PESSOA MONKS": "CAUDA LONGA", "KAROLLAINNY RANGEL DE SOUSA LOPES": "DIGITAL", "PABLO SERGIO RIBEIRO AMORA": "CAUDA LONGA", "GUILHERME DE LIMA MUSACHI": "PLATAFORMA ABC/ALTO TIETÊ/BX", "CAMILA ALVES PERTINHEZ": "PLATAFORMA SP", "JONATHAN LEAL DOS SANTOS SILVA": "CAUDA LONGA", "MAXUEL PIMENTEL NOBREGA": "DIGITAL", "AGATHA EIKO RODRIGUES SAKAMOTO": "CAUDA LONGA", "DANIELA NOVAIS DOS SANTOS": "DIGITAL", "ERIKA DE SOUSA SILVA": "PLATAFORMA SP", "LAIS DOS SANTOS MARTINS": "PLATAFORMA SP", "WILDER COCA PATZI": "PLATAFORMA SP", "AMANDA DOS SANTOS SOBRAL": "DIGITAL", "IZABELE DE OLIVEIRA DA SILVA": "PLATAFORMA ABC/ALTO TIETÊ/BX", "KAIQUE ARAUJO DA SILVA": "INTERIOR SP", "VIVIAN DE CASSIA AMBROSIO": "PLATAFORMA ABC/ALTO TIETÊ/BX", "DANIELA FREDERICO MARTINS CAMPINAS": "INTERIOR SP", "FLAVIA AUANA SILVA DE OLIVEIRA": "INTERIOR SP", "DANIELA FREDERICO MARTINS AM": "INTERIOR SP"};
+  // Exposto em window pois o parser do "Crescimento Geral" (mais abaixo no arquivo) vive
+  // numa IIFE diferente desta — sem isso, GESTOR_EQUIPE não existe nesse escopo (2026-09-04).
+  window.GESTOR_EQUIPE = GESTOR_EQUIPE;
 
   const fmt0 = n => Math.round(n).toLocaleString('pt-BR');
   const RANK_ORDER = ["Bronze 1","Bronze 2","Bronze 3","Bronze 4","Bronze 5","Bronze 6","Não Classificado"];
@@ -8025,15 +8028,18 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
   // "CRESCIMENTO GERAL" (aba GERAL) — planilha que o sênior já preenche todo dia, com o
   // ontem e o hoje reais de Assinatura/Funil/Ranking por gestor. Vira a fonte oficial do
   // "ontem → hoje" da aba Conversão (ver CONV_ONTEM_HOJE), no lugar do snapshot automático.
-  // A aba tem um bloco por carteira (Plataforma/ABC/Cauda Longa/Digital); como só
-  // reconhecemos os 4 nomes da Cauda Longa, basta varrer a aba inteira sem se preocupar
-  // com em qual bloco cada linha está — o que não bate com um nome conhecido é ignorado.
+  // A aba tem um bloco por carteira (Plataforma/ABC/Cauda Longa/Digital) — a Conversão em si
+  // já é da diretoria inteira (ver convSetupFilters/GESTOR_EQUIPE), então o reconhecimento
+  // aqui tem que cobrir os mesmos gestores, não só os 4 da Cauda Longa.
+  // Achado 2026-09-04: só os 4 nomes da Cauda Longa eram aceitos aqui (CG_KNOWN_NAMES,
+  // lista fixa) — os outros ~11 gestores da planilha (Plataforma/ABC/Digital) caíam sempre em
+  // "não reconhecido" e nunca recebiam ontem/hoje, mesmo com o arquivo certo importado todo
+  // dia. Trocado pra usar GESTOR_EQUIPE (mesma lista já usada pelo Ranking/Comparativo pra
+  // decidir quem é da diretoria), excluindo só os times fora de escopo (Interior SP, Venda
+  // Interna) — mesmo critério já aplicado em updateRankingData.
   // Guarda pelo nome EXATO da planilha (maiúsculo, nome completo) — é assim que PROPOSTAS.g
   // já vem do relatório Planium, então bate direto sem precisar converter pra apelido curto.
-  const CG_KNOWN_NAMES = new Set([
-    'AGATHA EIKO RODRIGUES SAKAMOTO','PATRICIA PESSOA MONKS',
-    'JONATHAN LEAL DOS SANTOS SILVA','PABLO SERGIO RIBEIRO AMORA'
-  ]);
+  const CG_OUT_OF_SCOPE_TEAMS = new Set(['INTERIOR SP', 'VENDA INTERNA']);
   function parseCrescimentoGeralWorkbook(workbook){
     const sheet = workbook.Sheets['GERAL'] || findSheet(workbook, 'GERAL');
     if (!sheet) throw new Error('Não encontrei a aba "GERAL" no arquivo Crescimento Geral.');
@@ -8046,19 +8052,26 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       // pula linhas em branco, cabeçalhos de carteira ("CARTEIRA X"), a linha de rótulos
       // das colunas e as linhas de "TOTAL" — só sobram linhas de gestor de verdade.
       if (!nomeRaw || nomeRaw.toUpperCase() === 'TOTAL' || nomeRaw.toUpperCase().indexOf('CARTEIRA') === 0) continue;
-      if (!CG_KNOWN_NAMES.has(nomeRaw.toUpperCase())){ naoReconhecidos.push(nomeRaw); continue; }
+      const nomeUp = nomeRaw.toUpperCase();
+      const equipe = window.GESTOR_EQUIPE[nomeUp];
+      if (!equipe || CG_OUT_OF_SCOPE_TEAMS.has(equipe)){ naoReconhecidos.push(nomeRaw); continue; }
       data[nomeRaw] = {
         assinaturaOntem: num(row[2]), assinaturaHoje: num(row[3]),
         funilOntem: num(row[5]), funilHoje: num(row[6]),
         rankingOntem: num(row[8]), rankingHoje: num(row[9]),
       };
     }
-    if (Object.keys(data).length === 0) throw new Error('Nenhum gestor da Cauda Longa foi encontrado na aba "GERAL" (procurei pelos 4 nomes já cadastrados).');
+    if (Object.keys(data).length === 0) throw new Error('Nenhum gestor da diretoria foi encontrado na aba "GERAL" (nenhum nome bateu com GESTOR_EQUIPE).');
     return { data, naoReconhecidos };
   }
   function diffCrescimentoGeral(parsed){
     let html = '<h3 style="font-size:14px;color:var(--navy);margin:14px 0 8px;"><i class=ic-trend></i> Crescimento Geral — Resumo</h3>';
-    html += `<div style="font-size:12.5px;line-height:1.8;"><div>Ontem × hoje atualizado pra <b>${Object.keys(parsed.data).length}</b> gestor${Object.keys(parsed.data).length!==1?'es':''} da Cauda Longa.</div></div>`;
+    html += `<div style="font-size:12.5px;line-height:1.8;"><div>Ontem × hoje atualizado pra <b>${Object.keys(parsed.data).length}</b> gestor${Object.keys(parsed.data).length!==1?'es':''}.</div></div>`;
+    if (parsed.naoReconhecidos && parsed.naoReconhecidos.length){
+      html += `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--red);">Nomes não reconhecidos (${parsed.naoReconhecidos.length}) — ficaram de fora</summary><ul style="font-size:12px;margin:6px 0 0 18px;">`;
+      parsed.naoReconhecidos.forEach(n => html += `<li>${n}</li>`);
+      html += '</ul></details>';
+    }
     return html;
   }
   function diffAssinatura(parsed){
