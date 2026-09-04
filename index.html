@@ -5376,7 +5376,13 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       if (eq && r.e !== eq) return false;
       if (g && r.g !== g) return false;
       if (q && !(norm(r.n).includes(q) || norm(r.c).includes(q))) return false;
-      if (r._cur <= 0 && r._prev <= 0) return false;
+      // Corretora sem venda nenhuma (cur e prev zerados) some da lista por padrão — faz
+      // sentido, "Ranking de Vendas" é ranking de quem vendeu. Mas quando a linha só existe
+      // porque updateRankingData a injetou por ter proposta real em aberto no Planium (ver
+      // comentário lá — caso F8), uma busca ativa por ela (nome ou código) deve continuar
+      // achando, senão a única forma de abrir "Propostas desta corretora" fica inacessível
+      // de novo — o problema original que essa injeção tenta resolver.
+      if (!q && r._cur <= 0 && r._prev <= 0) return false;
       return true;
     });
   }
@@ -5420,7 +5426,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     }).join('');
 
     // Tabela
-    const maxCur = rows.length ? rows[0]._cur : 1;
+    // ||1: fallback pra quando a única linha em tela é uma corretora só-com-proposta
+    // (cur=0, injetada por updateRankingData — ver comentário lá), senão maxCur=0 e a
+    // barra de proporção da linha vira NaN% (0/0).
+    const maxCur = (rows.length ? rows[0]._cur : 1) || 1;
     const shown = rankSeeAllOn ? rows : rows.slice(0,20);
     document.getElementById('rankBody').innerHTML = shown.map((r,i)=>{
       const d = r._cur - r._prev;
@@ -5636,13 +5645,40 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
   };
 
   function propostasDaCorretora(nomeCorretora){
-    if (typeof PROPOSTAS === 'undefined' || !PROPOSTAS.length) return [];
+    // Antes vinha de PROPOSTAS (export solto do Planium, sem o funil de verdade) — trocado
+    // pra PENDENCIAS_PME (o funil real: Planium → Cadastro → DITEC → BITIX), a mesma fonte
+    // que já alimenta o modal de "Pendências" por gestor (aliás o rodapé do PDF abaixo já
+    // dizia "Fonte: Relatório PME (PLANIUM)" mesmo quando a fonte de verdade era outra —
+    // intenção original nunca cumprida). Achado 2026-09-04, corretora F8 CORRETORA DE
+    // SEGUROS VIDA E BENEFICIOS LTDA: PROPOSTAS dava 34 "pendência" somando todos os meses,
+    // ou só 2 com o filtro de mês padrão (ver rkmSetupPropostas) — nenhum batia com a
+    // realidade. PENDENCIAS_PME dá 29, confirmado por Victor como o número certo.
+    // PENDENCIAS_PF fica de fora por enquanto — vocabulário de status bem diferente
+    // (RECUSADO/PROCESSADO/ASSINADO/AGUARDANDO PG...), mapear errado pro funil Planium seria
+    // pior que não mapear; sem impacto na F8 (ela não tem nenhuma linha em PF).
+    //
+    // PENDENCIAS_PME vive numa IIFE anterior (~linha 2470) e não é visível aqui por escopo
+    // léxico — usa o getter já exposto em window pra ASSINATURA (mesma necessidade), que
+    // devolve o valor atual mesmo depois de um reimport (fecha sobre a variável, não uma
+    // cópia estática).
+    const pmeData = (window.getPendenciasData ? window.getPendenciasData().pme : null) || {};
     const alvo = rkNormName(nomeCorretora);
     if (!alvo) return [];
-    return PROPOSTAS.filter(p => {
-      const n = rkNormName(p.co);
-      return n && (n === alvo || n.indexOf(alvo) === 0 || alvo.indexOf(n) === 0);
+    const out = [];
+    Object.keys(pmeData).forEach(gestor => {
+      (pmeData[gestor] || []).forEach(row => {
+        const n = rkNormName(row.corretora);
+        if (!n || !(n === alvo || n.indexOf(alvo) === 0 || alvo.indexOf(n) === 0)) return;
+        if (!row.dataVigencia) return; // rkmFiltrar exige vg.slice(0,7) — descarta linha sem vigência
+        const st = row.status || {};
+        out.push({
+          p: row.proposta, vg: row.dataVigencia, dr: row.dataReceb, st: st.planium || '',
+          ca: st.cadastro || '', di: st.ditec || '', bx: st.bitix || '',
+          bn: row.beneficiarios || 0, gestor,
+        });
+      });
     });
+    return out;
   }
 
   // Configuração dos status (rótulo, cor e se conta como "precisa de ação")
@@ -5816,14 +5852,18 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
       if (s.indexOf('devolv')>=0) return '#F5364A';
       return '#56608F';
     };
+    // PENDENCIAS_PME não tem empresa/CNPJ/vendedor (essas colunas existiam quando a fonte
+    // era PROPOSTAS) — em troca dá as 3 etapas do funil depois do Planium, o que serve mais
+    // pra quem vai de fato resolver a pendência (o motivo de baixar o relatório).
     const linhas = props.map(p => `<tr>
       <td>${esc(p.p)}</td>
-      <td>${esc(p.em) || '—'}</td>
-      <td class="c">${esc(p.cn) || '—'}</td>
+      <td class="c">${dataBR(p.dr)}</td>
       <td class="c">${dataBR(p.vg)}</td>
       <td class="c"><span class="st" style="color:${stColor(p.st)};border-color:${stColor(p.st)}33;background:${stColor(p.st)}14;">${esc(p.st)||'—'}</span></td>
+      <td class="c">${esc(p.ca) || '—'}</td>
+      <td class="c">${esc(p.di) || '—'}</td>
+      <td class="c">${esc(p.bx) || '—'}</td>
       <td class="c b">${p.bn||0}</td>
-      <td>${esc(p.vd)}</td>
     </tr>`).join('');
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Relatório de Propostas — ${esc(r.n)}</title>
 <style>
@@ -5846,7 +5886,6 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#131C4F;font-size:9px}
 table{width:100%;border-collapse:collapse;table-layout:fixed}
 th{background:#101E63;color:#fff;font-size:7px;text-transform:uppercase;letter-spacing:.3px;padding:5px 4px;text-align:left}
 td{padding:4px;border-bottom:1px solid #E8EDF7;font-size:8px;overflow-wrap:break-word}
-td:nth-child(3){font-size:7.5px;color:#56608F}
 tr:nth-child(even) td{background:#F8FAFF}
 td.c{text-align:center}td.b{font-weight:700}
 .st{display:inline-block;padding:1px 5px;border-radius:20px;border:1px solid;font-size:7px;font-weight:700;text-transform:capitalize;white-space:nowrap}
@@ -5868,16 +5907,17 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
 </div>
 <table>
   <thead><tr>
-    <th style="width:9%">Proposta</th>
-    <th style="width:27%">Empresa</th>
-    <th style="width:15%;text-align:center">CNPJ</th>
-    <th style="width:10%;text-align:center">Vigência</th>
-    <th style="width:13%;text-align:center">Status</th>
-    <th style="width:7%;text-align:center">Vidas</th>
-    <th style="width:19%">Vendedor</th>
+    <th style="width:11%">Proposta</th>
+    <th style="width:12%;text-align:center">Recebido</th>
+    <th style="width:12%;text-align:center">Vigência</th>
+    <th style="width:16%;text-align:center">Planium</th>
+    <th style="width:16%;text-align:center">Cadastro</th>
+    <th style="width:12%;text-align:center">DITEC</th>
+    <th style="width:12%;text-align:center">BITIX</th>
+    <th style="width:9%;text-align:center">Vidas</th>
   </tr></thead>
   <tbody>${linhas}</tbody>
-  <tfoot><tr><td colspan="5">Total — ${props.length} proposta(s)</td><td class="c">${rkFmt(vidasTot)}</td><td></td></tr></tfoot>
+  <tfoot><tr><td colspan="7">Total — ${props.length} proposta(s)</td><td class="c">${rkFmt(vidasTot)}</td></tr></tfoot>
 </table>
 <div class="ft"><span>Hapvida NotreDame Intermédica · Diretoria Regional SP · NDI SP</span><span>Fonte: Relatório PME (PLANIUM) · Documento gerado automaticamente</span></div>
 
@@ -6231,6 +6271,39 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     if (prevList) prevList.forEach(r => prevMap[r.c] = r);
     else RANKDATA.forEach(r => { if (r.prev>0) prevMap[r.c] = {c:r.c,t:r.prev}; });
     const codes = new Set([...Object.keys(curMap), ...Object.keys(prevMap)]);
+    // Corretora com proposta real em aberto no Planium (PROPOSTAS) mas zero venda no mês
+    // atual E no anterior nunca ganhava linha aqui — RANKDATA só nasce da aba EXPORT (só
+    // quem vendeu), então ela ficava sem linha na tabela do Ranking, e clicar numa linha é
+    // o único jeito de abrir "Propostas desta corretora" (rkmSetupPropostas). Caso real
+    // achado 2026-09-04: código 0540, F8 CORRETORA DE SEGUROS VIDA E BENEFICIOS LTDA —
+    // fluxo real de propostas, zero venda em 20 meses, gestora Camila Alves Pertinhez
+    // (PLATAFORMA SP, gestora válida da diretoria) — inacessível no Ranking por causa
+    // disso. Mesmo corte de escopo+atividade do detectNewCorretorasCaudaLonga (ver
+    // comentário lá): GESTOR_EQUIPE pra não deixar passar a Carteira nacional inteira, e só
+    // quem tem proposta de verdade rodando, pra não virar milhares de linhas com 0 vidas.
+    if (window.CARTEIRA_MAP && typeof PROPOSTAS !== 'undefined' && PROPOSTAS.length){
+      const propostasNormList = [...new Set(PROPOSTAS.map(p => rkNormName(p.co)).filter(Boolean))];
+      // Prefixo, não igualdade — mesma regra de propostasDaCorretora (a razão social do
+      // Planium e a da Carteira nem sempre batem char-a-char: achado real testando a
+      // própria F8, "...VIDA E BENEFIC LTDA" no Planium x "...VIDA E BENEFICIOS LTDA" na
+      // Carteira).
+      const hasPropostaReal = razao => {
+        const n = rkNormName(razao);
+        return n && propostasNormList.some(pn => pn === n || pn.indexOf(n) === 0 || n.indexOf(pn) === 0);
+      };
+      Object.keys(window.CARTEIRA_MAP.byCodigo).forEach(codigo => {
+        if (codes.has(codigo)) return;
+        const entries = window.CARTEIRA_MAP.byCodigo[codigo].filter(e => {
+          const team = GESTOR_EQUIPE[(e.gestorRaw||'').toUpperCase()];
+          if (!team || team === 'INTERIOR SP' || team === 'VENDA INTERNA') return false;
+          return hasPropostaReal(e.razao);
+        });
+        if (!entries.length) return;
+        const e = entries[0];
+        curMap[codigo] = { c: codigo, n: e.razao, g: e.gestorRaw, t:0, ind:0, pim:0, mid:0, adm:0 };
+        codes.add(codigo);
+      });
+    }
     const merged = [];
     codes.forEach(c => {
       const cu = curMap[c], pv = prevMap[c];
@@ -6313,15 +6386,52 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // código sem zero à esquerda podia ser marcada como "nova" só por não bater string-a-
     // string contra a chave normalizada da Carteira.
     const existingCodes = new Set(DATA.map(d=>window.normalizeCodigo(d.c)));
+    // Índice de nomes normalizados (mesma normalização de rkNormName, usada pra achar
+    // "Propostas desta corretora" no Ranking) com proposta em aberto no Planium agora —
+    // ver por quê abaixo.
+    const propostasNormList = [...new Set((typeof PROPOSTAS !== 'undefined' ? PROPOSTAS : []).map(p => rkNormName(p.co)).filter(Boolean))];
+    // Prefixo, não igualdade — mesma regra de propostasDaCorretora (a razão social do
+    // Planium e a da Carteira nem sempre batem char-a-char: achado real testando a própria
+    // F8, "...VIDA E BENEFIC LTDA" no Planium x "...VIDA E BENEFICIOS LTDA" na Carteira).
+    const hasPropostaReal = razao => {
+      const n = rkNormName(razao);
+      return n && propostasNormList.some(pn => pn === n || pn.indexOf(n) === 0 || n.indexOf(pn) === 0);
+    };
     const seen = new Set();
     const found = [];
     Object.keys(carteira.byCodigo).forEach(codigo => {
       if (existingCodes.has(codigo) || seen.has(codigo)) return;
-      const entries = carteira.byCodigo[codigo].filter(e => e.equipe === 'CAUDA LONGA');
+      // Escopo: usa a mesma lista GESTOR_EQUIPE (~linha 3688) que já decide, em todo o
+      // resto do dash, quem pertence à diretoria da Fabyanna — não mais o rótulo bruto da
+      // coluna EQUIPE VENDA da Carteira ser literalmente "CAUDA LONGA". A Carteira é
+      // nacional (código de corretora de qualquer filial do Brasil); GESTOR_EQUIPE é a
+      // lista curta e já mantida à mão dos gestores de verdade desta diretoria — usar
+      // isOutOfScopeGestor (lista de exclusão) aqui sozinho deixaria passar milhares de
+      // corretoras de outras filiais/diretorias, então o corte certo é "está em
+      // GESTOR_EQUIPE" (inclui INTERIOR SP/VENDA INTERNA só pra rótulo, por isso ainda
+      // exclui os dois times fora do escopo dos números). O filtro antigo (e.equipe ===
+      // 'CAUDA LONGA') fazia corretora nova de gestor legítimo de outro time da mesma
+      // diretoria nunca ser detectada — caso real achado 2026-09-04: código 0540, F8
+      // CORRETORA DE SEGUROS VIDA E BENEFICIOS LTDA, gestora Camila Alves Pertinhez
+      // (EQUIPE VENDA "PLATAFORMA SP" na Carteira, gestora válida da diretoria, confirmado
+      // por Victor) — nunca aparecia em lugar nenhum do dash por causa disso.
+      //
+      // Além do escopo, exige proposta real em aberto (hasPropostaReal) — a Carteira
+      // sozinha tem ~12 mil códigos nacionais, a imensa maioria cadastro morto (zero
+      // venda, zero proposta, nunca existiu de verdade — inclusive linha-placeholder "SEM
+      // QUADRO COMISSAO ATIVO"). Sem esse corte, uma importação de Carteira inundaria a
+      // Elegibilidade com milhares de linhas fantasmas. Confirmado com Victor 2026-09-04
+      // (F8: zero venda em 20 meses, mas fluxo real de propostas Planium) — é esse padrão
+      // específico (proposta rodando, venda ainda não) que deve aparecer, não tudo.
+      const entries = carteira.byCodigo[codigo].filter(e => {
+        const team = GESTOR_EQUIPE[(e.gestorRaw||'').toUpperCase()];
+        if (!team || team === 'INTERIOR SP' || team === 'VENDA INTERNA') return false;
+        return hasPropostaReal(e.razao);
+      });
       if (!entries.length) return;
       seen.add(codigo);
       const e = entries[0];
-      const friendly = CL_RAW_TO_FRIENDLY[e.gestorRaw.toUpperCase()] || 'Sem Gestor Atribuído';
+      const friendly = CL_RAW_TO_FRIENDLY[e.gestorRaw.toUpperCase()] || e.gestorRaw;
       const zeros = Array(MONTH_LABELS.length).fill(0);
       found.push({
         c: codigo, n: e.razao || '(Nome não informado)', g: friendly, gr: '—',
