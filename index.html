@@ -6126,13 +6126,30 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
         codes.add(codigo);
       });
     }
+    // Vínculo de assessoria (ass/acod, colunas H/I da Carteira — ver parseCarteiraWorkbook)
+    // gravado direto em cada linha do RANKDATA, não só mantido em memória via
+    // window.CARTEIRA_MAP — assim sobrevive à publicação/próxima sessão (CARTEIRA_MAP some
+    // a cada F5, só existe de novo quando alguém reimporta a Carteira). Alimenta o
+    // Comparativo → Assessorias com a diretoria inteira, não só a carteira Cauda Longa (ver
+    // cmpAggregateAssessorias — pedido de Victor 2026-09-04: "a aba COMPARATIVO é pra
+    // aparecer tudo"). Guarda o que já existia (RANKDATA anterior) pra não apagar o vínculo
+    // numa importação comum (só sales, sem reanexar a Carteira).
+    const existingAssByCode = {};
+    RANKDATA.forEach(r => { if (r.ass) existingAssByCode[r.c] = {ass: r.ass, acod: r.acod}; });
     const merged = [];
     codes.forEach(c => {
       const cu = curMap[c], pv = prevMap[c];
       const base = cu || pv;
       const g = (cu && cu.g) || (pv && pv.g) || '';
+      let ass = '', acod = '';
+      if (window.CARTEIRA_MAP && window.CARTEIRA_MAP.byCodigo[c] && window.CARTEIRA_MAP.byCodigo[c].length){
+        const ce = window.CARTEIRA_MAP.byCodigo[c].find(e => e.assessoria) || null;
+        if (ce){ ass = ce.assessoria; acod = ce.codAss; }
+      } else if (existingAssByCode[c]){
+        ass = existingAssByCode[c].ass; acod = existingAssByCode[c].acod;
+      }
       merged.push({
-        c, n: base.n || '', g, e: GESTOR_EQUIPE[g] || '—',
+        c, n: base.n || '', g, e: GESTOR_EQUIPE[g] || '—', ass, acod,
         cur: cu ? Math.round(cu.t*10)/10 : 0,
         prev: pv ? Math.round(pv.t*10)/10 : 0,
         ind: cu ? cu.ind : 0, pim: cu ? cu.pim : 0, mid: cu ? cu.mid : 0, adm: cu ? cu.adm : 0,
@@ -6577,32 +6594,32 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const idx = cmpMonthIndex();
     return (idx >= 0 && idx < labels.length) ? labels[idx] : labels[labels.length-1];
   };
-  // Agrupa as corretoras da carteira Cauda Longa (aba Elegibilidade) por assessoria — mesma
-  // lógica de agrupamento já usada em Elegibilidade → "Assessorias" (agrupa por d.ass, mostra
-  // o código mais comum encontrado no grupo). Só cobre o universo Cauda Longa: a base de
-  // Ranking (todas as corretoras de SP) não tem informação de assessoria.
-  // Vidas = só o mês selecionado no "Mês de Referência" (index calculado por cmpMonthIndex),
-  // não o acumulado de 17 meses — pedido explícito do usuário, e acompanha o dropdown que já
-  // existe em Desempenho Comercial.
+  // Achado 2026-09-04 (caso F8, código 0540): antes lia só window.getEligibilidadeData()
+  // (Elegibilidade, carteira Cauda Longa) — F8 é assessoria de outra gestora (Plataforma
+  // SP), então nunca aparecia aqui mesmo tendo corretoras de verdade vinculadas. Victor foi
+  // claro: "a aba COMPARATIVO é pra aparecer tudo" — igual ao modo Corretora (que já lê
+  // RANKDATA, diretoria inteira), não só Cauda Longa. Agora lê RANKDATA e agrupa por
+  // r.ass (gravado ali por updateRankingData a partir da Carteira — ver comentário lá).
+  // Sem "% elegível" — elegibilidade é uma classificação só do Cauda Longa, não existe pra
+  // corretora de outro time; ver getEntityData/renderCompare, que já param de mostrar isso.
   function cmpAggregateAssessorias(){
-    const data = window.getEligibilidadeData ? window.getEligibilidadeData() : [];
+    const data = window.getRankData ? window.getRankData() : [];
     const groups = {};
-    data.forEach(d => {
-      if (!d.ass) return; // "sem assessoria vinculada" não faz sentido como entidade pra comparar
-      (groups[d.ass] = groups[d.ass] || []).push(d);
+    data.forEach(r => {
+      if (!r.ass) return; // sem assessoria vinculada não faz sentido como entidade pra comparar
+      (groups[r.ass] = groups[r.ass] || []).push(r);
     });
     return Object.entries(groups).map(([name, rows]) => {
-      const acod = rows.map(r=>r.acod).find(x=>x && String(x).trim()!=='0') || '';
+      const acod = rows.map(r=>r.acod).find(Boolean) || '';
       const n = rows.length;
-      const eleg = rows.filter(r=>r.el===1).length;
       const cat = {
-        IND: {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.pf) : 0), 0)},
-        SS:  {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.ss) : 0), 0)},
-        PME: {meta:0, int: rows.reduce((s,r)=>s + (r.mc ? cmpValueAtCurMonth(r.mc.pme) : 0), 0)},
-        ADM: {meta:0, int: 0}, // Elegibilidade não rastreia Administradora (só Desempenho Comercial)
+        IND: {meta:0, int: rows.reduce((s,r)=>s + (r.ind||0), 0)},
+        SS:  {meta:0, int: rows.reduce((s,r)=>s + (r.pim||0), 0)},
+        PME: {meta:0, int: rows.reduce((s,r)=>s + (r.mid||0), 0)},
+        ADM: {meta:0, int: rows.reduce((s,r)=>s + (r.adm||0), 0)},
       };
-      const vidas = rows.reduce((s,r)=>s + cmpValueAtCurMonth(r.m), 0);
-      return { name, acod, n, eleg, elegPct: n ? eleg/n*100 : 0, vidas, cat };
+      const vidas = rows.reduce((s,r)=>s + (r.cur||0), 0);
+      return { name, acod, n, vidas, cat };
     });
   }
   // Renderiza a lista rolável de um combobox, filtrada pelo texto digitado
@@ -6615,7 +6632,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     }
     if (cmpMode === 'assessoria'){
       return cmpAggregateAssessorias().sort((a,b)=>b.vidas-a.vidas).map(a => ({
-        value: 'ass:'+a.name, cod: a.acod, nome: a.name, extra: a.n+' corretoras', grupo: 'Assessorias — carteira Cauda Longa'
+        value: 'ass:'+a.name, cod: a.acod, nome: a.name, extra: a.n+' corretoras', grupo: 'Assessorias'
       }));
     }
     const mjData = window.getMetaJunhoData ? window.getMetaJunhoData() : null;
@@ -6740,16 +6757,15 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     }
     if (type === 'ass'){
       const a = cmpAggregateAssessorias().find(x => x.name === name);
-      if (!a) return {label:'—', role:'Assessoria', cor:'#94a3b8', total:{meta:0,int:0}, cat:{IND:{meta:0,int:0},SS:{meta:0,int:0},PME:{meta:0,int:0},ADM:{meta:0,int:0}}, isAssessoria:true, corretorasCount:0, elegPct:0};
+      if (!a) return {label:'—', role:'Assessoria', cor:'#94a3b8', total:{meta:0,int:0}, cat:{IND:{meta:0,int:0},SS:{meta:0,int:0},PME:{meta:0,int:0},ADM:{meta:0,int:0}}, isAssessoria:true, corretorasCount:0};
       return {
         label: a.name + (a.acod ? ` (${a.acod})` : ''),
-        role: `Assessoria — ${a.n} corretora${a.n===1?'':'s'} na carteira Cauda Longa`,
+        role: `Assessoria — ${a.n} corretora${a.n===1?'':'s'} vinculada${a.n===1?'':'s'}`,
         cor: '#16B87A',
         total: {meta: 0, int: a.vidas},
         cat: a.cat,
         isAssessoria: true,
         corretorasCount: a.n,
-        elegPct: a.elegPct,
       };
     }
     if (type === 'team'){
@@ -6791,7 +6807,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     if (document.activeElement !== inA){ inA.value = cmpItemLabel(itA); document.getElementById('cmpComboA').classList.add('has-value'); }
     if (document.activeElement !== inB){ inB.value = cmpItemLabel(itB); document.getElementById('cmpComboB').classList.add('has-value'); }
     const hint = document.getElementById('cmpHint');
-    hint.style.display = ''; hint.textContent = itens.length + (cmpMode==='corretora' ? ' corretoras disponíveis' : (cmpMode==='assessoria' ? ' assessorias (carteira Cauda Longa)' : ' times e gestores'));
+    hint.style.display = ''; hint.textContent = itens.length + (cmpMode==='corretora' ? ' corretoras disponíveis' : (cmpMode==='assessoria' ? ' assessorias (toda a diretoria)' : ' times e gestores'));
     const selA = {value: itA.value}, selB = {value: itB.value};
 
     const A = getEntityData(mjData, selA.value);
@@ -6818,7 +6834,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
 return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${raw ? E.cor : pctColor(cp)}"></div></div><div class="cat-pct">${raw ? fmt0(c.int) : pctf(cp)}</div></div>`;
       }).join('');
       const totalLabel = E.isAssessoria
-        ? `${cmpCurMonthLabel()} · ${E.corretorasCount||0} corretora${(E.corretorasCount||0)===1?'':'s'} · ${Math.round(E.elegPct||0)}% elegíveis`
+        ? `${cmpCurMonthLabel()} · ${E.corretorasCount||0} corretora${(E.corretorasCount||0)===1?'':'s'} vinculada${(E.corretorasCount||0)===1?'':'s'}`
         : (E.isCorretora ? (cmpLabels().cur + ' · ' + fmt0(E.total.meta) + ' em ' + cmpLabels().prev) : (fmt0(E.total.int) + ' / ' + fmt0(E.total.meta) + ' vidas (meta total)'));
       return `<div class="gestor-card"><div class="avatar" style="background:${E.cor}">${iniciais(E.label)}</div><div class="name">${E.label}</div><div class="role">${E.role}</div>
         <div class="total-pct" style="color:${raw ? corTexto(E.cor) : pctColor(p)}">${raw ? fmt0(E.total.int) : pctf(p)}</div>
@@ -6843,8 +6859,8 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
                : `<span class="vs-tag neutral">▼ ${fmt0(Math.abs(d))} vs ${cmpLabels().prev.split('/')[0]}</span>`);
       tagA = mk(dA); tagB = mk(dB);
     } else if (isAss){
-      tagA = `<span class="vs-tag neutral">${A.corretorasCount||0} corretoras · ${Math.round(A.elegPct||0)}% elegíveis</span>`;
-      tagB = `<span class="vs-tag neutral">${B.corretorasCount||0} corretoras · ${Math.round(B.elegPct||0)}% elegíveis</span>`;
+      tagA = `<span class="vs-tag neutral">${A.corretorasCount||0} corretora${(A.corretorasCount||0)===1?'':'s'} vinculada${(A.corretorasCount||0)===1?'':'s'}</span>`;
+      tagB = `<span class="vs-tag neutral">${B.corretorasCount||0} corretora${(B.corretorasCount||0)===1?'':'s'} vinculada${(B.corretorasCount||0)===1?'':'s'}</span>`;
     }
     const vsSubtitle = E => E.isAssessoria
       ? (fmt0(E.total.int) + ' vidas · ' + cmpCurMonthLabel())
@@ -6903,7 +6919,7 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     let rows = isRaw ? '' : row('Meta', A.total.meta, B.total.meta, v=>fmt0(v)+' vidas', 'neutral');
     const tSub = document.getElementById('cmpTableSub');
     if (tSub) tSub.textContent = isAss
-      ? `Assessorias da carteira Cauda Longa, lado a lado — total de vidas em ${cmpCurMonthLabel()} (mês atual). O melhor valor de cada linha aparece em destaque.`
+      ? `Assessorias, lado a lado — total de vidas em ${cmpCurMonthLabel()} (mês atual). O melhor valor de cada linha aparece em destaque.`
       : (isCorrReal
         ? `Volume de vidas lado a lado — ${cmpLabels().cur} vs ${cmpLabels().prev}. O melhor valor de cada linha aparece em destaque.`
         : 'Time inteiro ou gestor individual, lado a lado. O melhor valor de cada linha aparece em destaque.');
@@ -6912,7 +6928,6 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
       rows += row('Variação vs mês anterior', A.total.int-A.total.meta, B.total.int-B.total.meta, v=>(v>=0?'+':'')+fmt0(v)+' vidas', 'higher');
     } else if (isAss){
       rows += row('Nº de Corretoras', A.corretorasCount||0, B.corretorasCount||0, v=>fmt0(v), 'higher');
-      rows += row('% Elegíveis', A.elegPct||0, B.elegPct||0, v=>v.toFixed(1)+'%', 'higher');
     } else {
       rows += row('Integrado (Realizado)', A.total.int, B.total.int, v=>fmt0(v)+' vidas', 'higher');
       rows += row('% Atingimento', pctA, pctB, pctf, 'higher');
@@ -7466,11 +7481,16 @@ return `<div class="cat-row"><div class="cat-name">${k}</div><div class="bar-bg"
     let count = 0;
     for (let i = 1; i < rows.length; i++){
       const row = rows[i] || [];
-      const codigo = row[1], razao = row[2], gestorRaw = row[3], filial = row[4], equipe = row[5], senior = row[9];
+      const codigo = row[1], razao = row[2], gestorRaw = row[3], filial = row[4], equipe = row[5], codAss = row[6], assessoria = row[7], senior = row[9];
       if (!codigo || !razao) continue;
       const codNorm = normalizeCodigo(codigo);
       const key = codNorm + '|' + normalizeName(razao);
-      const entry = { gestorRaw: gestorRaw ? String(gestorRaw).trim() : '', equipe: equipe ? String(equipe).trim() : '', senior: senior ? String(senior).trim() : '', filial: filial ? String(filial).trim() : '', razao: String(razao).trim() };
+      // codAss/assessoria (colunas H/I): quando essa corretora é atendida por uma
+      // assessoria (outra corretora que serve de intermediária pro gestor dela — caso
+      // real F8, código 0540, achado 2026-09-04), pra alimentar o Comparativo →
+      // Assessorias com a diretoria inteira (ver updateRankingData/cmpAggregateAssessorias).
+      const codAssNorm = (codAss && String(codAss).trim() && String(codAss).trim() !== '0') ? normalizeCodigo(codAss) : '';
+      const entry = { gestorRaw: gestorRaw ? String(gestorRaw).trim() : '', equipe: equipe ? String(equipe).trim() : '', senior: senior ? String(senior).trim() : '', filial: filial ? String(filial).trim() : '', razao: String(razao).trim(), codAss: codAssNorm, assessoria: (assessoria && String(assessoria).trim() !== '0') ? String(assessoria).trim() : '' };
       map[key] = entry;
       (byCodigo[codNorm] = byCodigo[codNorm] || []).push(entry);
       count++;
