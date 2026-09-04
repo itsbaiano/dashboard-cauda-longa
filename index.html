@@ -2880,6 +2880,10 @@ document.getElementById('globalMonthSelect').addEventListener('change', (e) => {
     // precisa re-renderizar quando o usuário troca o mês no dropdown, senão fica mostrando
     // o mês antigo até o usuário mexer em outra coisa na tela.
     if (window.renderCompare) window.renderCompare();
+    // Achado 2026-09-04, pedido do Victor: trocar o "Mês de Referência" não mudava nada no
+    // Ranking de Vendas — RANKDATA agora tem histórico mensal (m/mc, ver updateRankingData),
+    // só faltava reagir à troca do dropdown como as outras telas já fazem.
+    if (window.rankInitialized && window.renderRanking) window.renderRanking();
   };
   window.getCurrentMonth = function(){ return currentMonth; };
   // "Junho/2026" etc. (mesmo formato do texto que já existia fixo no subtítulo do gráfico
@@ -5483,10 +5487,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const equipes = [...new Set(RANKDATA.map(r=>r.e).filter(e=>e && e!=='—'))].sort();
     eqSel.innerHTML = '<option value="">Todas as equipes (SP)</option>' + equipes.map(e=>`<option value="${e}">${e}</option>`).join('');
     rankPopulateGestores();
-    document.getElementById('rankMonthsLabel').textContent = RANK_CUR_LABEL + ' vs ' + RANK_PREV_LABEL;
-    document.getElementById('rankPodiumMonth').textContent = RANK_CUR_LABEL.split('/')[0];
-    document.getElementById('rankThCur').textContent = RANK_CUR_LABEL.split('/')[0];
-    document.getElementById('rankThPrev').textContent = RANK_PREV_LABEL.split('/')[0];
+    // Rótulos de mês (rankMonthsLabel/rankPodiumMonth/rankThCur/rankThPrev) NÃO ficam mais
+    // aqui — isso só roda uma vez por import (rankPopulated), mas o "Mês de Referência" pode
+    // mudar sem reimportar nada, então os rótulos precisam ser recalculados em TODO render
+    // (ver renderRanking, curLabel/prevLabel via rankCurLabel()/rankPrevLabel()).
     rankPopulated = true;
   }
 
@@ -5497,11 +5501,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const norm = s => String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
     const q = norm(document.getElementById('rankSearch').value);
     return RANKDATA.map(r => {
-      // valor conforme segmento escolhido
-      let cur, prev;
-      if (seg === 't'){ cur = r.cur; prev = r.prev; }
-      else { cur = r[seg] || 0; prev = 0; /* segmento só existe no mês atual embutido */ }
-      return { ...r, _cur: cur, _prev: prev };
+      // valor conforme segmento escolhido E o "Mês de Referência" selecionado (rankValueForMonth
+      // busca no histórico m[]/mc[] quando não é o mês mais recente — ver comentário lá)
+      const v = rankValueForMonth(r, seg);
+      return { ...r, _cur: v.cur, _prev: v.prev };
     }).filter(r => {
       if (eq && r.e !== eq) return false;
       if (g && r.g !== g) return false;
@@ -5529,6 +5532,15 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const conc = totalCur ? top10/totalCur*100 : 0;
     const deltaTot = totalPrev>0 ? ((totalCur-totalPrev)/totalPrev*100) : null;
 
+    // Rótulos do mês selecionado (não necessariamente o último importado — ver
+    // rankCurLabel/rankPrevLabel/rankIsLatestMonth). Recalculados em TODO render porque o
+    // "Mês de Referência" pode mudar sem reimportar nada.
+    const curLabel = rankCurLabel(), prevLabel = rankPrevLabel();
+    document.getElementById('rankMonthsLabel').textContent = curLabel + ' vs ' + prevLabel;
+    document.getElementById('rankPodiumMonth').textContent = curLabel.split('/')[0];
+    document.getElementById('rankThCur').textContent = curLabel.split('/')[0];
+    document.getElementById('rankThPrev').textContent = prevLabel.split('/')[0];
+
     document.getElementById('rankCount').textContent = rows.length + ' corretora(s)';
     document.getElementById('rankSearchLabel').textContent = 'Buscar corretora';
 
@@ -5537,9 +5549,9 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
 
     // KPIs
     const deltaTxt = segActive ? '<span class="ek-note" style="color:var(--muted)">comparação só no total</span>'
-      : (deltaTot===null ? '' : `<span style="color:${deltaTot>=0?'#1b7a63':'var(--accent-red)'};font-weight:700">${deltaTot>=0?'▲':'▼'} ${Math.abs(deltaTot).toFixed(0)}% vs ${RANK_PREV_LABEL.split('/')[0]}</span>`);
+      : (deltaTot===null ? '' : `<span style="color:${deltaTot>=0?'#1b7a63':'var(--accent-red)'};font-weight:700">${deltaTot>=0?'▲':'▼'} ${Math.abs(deltaTot).toFixed(0)}% vs ${prevLabel.split('/')[0]}</span>`);
     document.getElementById('rankKpiRow').innerHTML = `
-      <div class="kpi" style="--k:var(--primary-light)"><div class="label">Vidas Vendidas</div><div class="value">${rkFmt(totalCur)}</div><div class="sub">${RANK_CUR_LABEL} · ${deltaTxt}</div></div>
+      <div class="kpi" style="--k:var(--primary-light)"><div class="label">Vidas Vendidas</div><div class="value">${rkFmt(totalCur)}</div><div class="sub">${curLabel} · ${deltaTxt}</div></div>
       <div class="kpi" style="--k:var(--accent-mint)"><div class="label">Corretoras Ativas</div><div class="value">${rkFmt(ativas)}</div><div class="sub">venderam ao menos 1 vida</div></div>
       <div class="kpi" style="--k:var(--accent-gold)"><div class="label">Ticket Médio</div><div class="value">${ticket.toFixed(1)}</div><div class="sub">vidas por corretora ativa</div></div>
       <div class="kpi" style="--k:var(--accent-coral)"><div class="label">Concentração Top 10</div><div class="value">${conc.toFixed(0)}%</div><div class="sub">${rkFmt(top10)} de ${rkFmt(totalCur)} vidas</div></div>`;
@@ -5551,7 +5563,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     document.getElementById('rankPodium').innerHTML = podOrder.map((r,i)=>{
       if (!r) return '<div></div>';
       const d = r._cur - r._prev;
-      const dtxt = segActive ? '' : (r._prev>0 ? `<div class="pd">${d>=0?'▲ +':'▼ '}${rkFmt(Math.abs(d))} vs ${RANK_PREV_LABEL.split('/')[0]}</div>` : `<div class="pd">novo no mês</div>`);
+      const dtxt = segActive ? '' : (r._prev>0 ? `<div class="pd">${d>=0?'▲ +':'▼ '}${rkFmt(Math.abs(d))} vs ${prevLabel.split('/')[0]}</div>` : `<div class="pd">novo no mês</div>`);
       return `<div class="pod ${podClass[i]}"><div class="medal">${medals[i]}</div><div class="pname">${rkShortName(r.n)}</div><div class="pv">${rkFmt(r._cur)}</div><div class="pl">vidas</div><div class="pg">${rkShortGestor(r.g)}</div>${dtxt}</div>`;
     }).join('');
 
@@ -5580,20 +5592,20 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
         <td><div class="rk-bar"><i style="width:${(r._cur/maxCur*100).toFixed(0)}%"></i></div></td>
       </tr>`;
     }).join('');
-    document.getElementById('rankTableSub').innerHTML = (rankSeeAllOn?`Todas as ${rows.length}`:'Top 20') + ' corretoras · a coluna "vs mês anterior" compara com ' + RANK_PREV_LABEL + (segActive?' · <b>segmento filtrado: comparação indisponível</b>':'') + ' · clique numa linha para o histórico';
+    document.getElementById('rankTableSub').innerHTML = (rankSeeAllOn?`Todas as ${rows.length}`:'Top 20') + ' corretoras · a coluna "vs mês anterior" compara com ' + prevLabel + (segActive?' · <b>segmento filtrado: comparação indisponível</b>':'') + ' · clique numa linha para o histórico';
     document.getElementById('rankSeeAll').textContent = rankSeeAllOn ? 'Mostrar só o Top 20 ▴' : `Ver todas as ${rows.length} ▾`;
     document.querySelectorAll('#rankBody tr').forEach(tr=>tr.addEventListener('click',()=>rankShowDetail(tr.dataset.c)));
 
-    rankRenderCharts(rows, totalCur, totalPrev, seg);
+    rankRenderCharts(rows, totalCur, totalPrev, seg, curLabel, prevLabel);
   }
 
-  function rankRenderCharts(rows, totalCur, totalPrev, seg){
+  function rankRenderCharts(rows, totalCur, totalPrev, seg, curLabel, prevLabel){
     const segActive = seg !== 't';
     // Mês atual vs anterior
     destroyChart('rkMonths');
     charts.rkMonths = new Chart(document.getElementById('rankChartMonths'), {
       type:'bar',
-      data:{ labels:[RANK_PREV_LABEL, RANK_CUR_LABEL], datasets:[{ data:[segActive?0:totalPrev, totalCur], backgroundColor:['#94a3b8','#2E52D4'], borderRadius:8, maxBarThickness:90 }] },
+      data:{ labels:[prevLabel, curLabel], datasets:[{ data:[segActive?0:totalPrev, totalCur], backgroundColor:['#94a3b8','#2E52D4'], borderRadius:8, maxBarThickness:90 }] },
       options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>rkFmt(c.parsed.y)+' vidas'}}}, scales:{y:{beginAtZero:true, grid:{color:'#eef1f6'}}, x:{grid:{display:false}}} }
     });
     // Concentração por faixas — leitura direta de quanto cada grupo de corretoras produz
@@ -5625,9 +5637,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     if (concEl && faixas.length){
       concEl.innerHTML = faixas.map(f=>`<span style="display:inline-flex;align-items:center;gap:6px;margin-right:18px;white-space:nowrap;"><i style="width:10px;height:10px;border-radius:3px;background:${f.color};display:inline-block;flex-shrink:0;"></i><span><b style="color:var(--navy);">${f.label}:</b> ${rkFmt(f.vidas)} vidas · ${f.pct.toFixed(0)}%</span></span>`).join('');
     }
-    // Mix de produto (só faz sentido no total)
+    // Mix de produto (só faz sentido no total) — pelo mês selecionado, não sempre o mais
+    // recente (rankValueForMonth já sabe buscar no histórico mc[] quando precisa).
     const mix = { ind:0, pim:0, mid:0, adm:0 };
-    rows.forEach(r=>{ mix.ind+=r.ind||0; mix.pim+=r.pim||0; mix.mid+=r.mid||0; mix.adm+=r.adm||0; });
+    rows.forEach(r=>{ mix.ind+=rankValueForMonth(r,'ind').cur; mix.pim+=rankValueForMonth(r,'pim').cur; mix.mid+=rankValueForMonth(r,'mid').cur; mix.adm+=rankValueForMonth(r,'adm').cur; });
     destroyChart('rkMix');
     charts.rkMix = new Chart(document.getElementById('rankChartMix'), {
       type:'doughnut',
@@ -5656,7 +5669,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       h.textContent = titulo; sb.textContent = sub;
       charts[chartKey] = new Chart(document.getElementById(canvasId), {
         type:'bar',
-        data:{ labels:[RANK_PREV_LABEL, RANK_CUR_LABEL], datasets:[{ data:[segActive?0:prev, cur], backgroundColor:['#94a3b8','#2E52D4'], borderRadius:8, maxBarThickness:80 }] },
+        data:{ labels:[prevLabel, curLabel], datasets:[{ data:[segActive?0:prev, cur], backgroundColor:['#94a3b8','#2E52D4'], borderRadius:8, maxBarThickness:80 }] },
         options: barOptsV
       });
     };
@@ -5664,10 +5677,10 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     if (gestorSel){
       // ---- Recorte: 1 GESTOR ----
       evolucaoChart('rankChartGestor','rkGestor','Evolução do Gestor',
-        `${rkShortGestor(gestorSel)} — ${RANK_CUR_LABEL} vs ${RANK_PREV_LABEL}`, rows);
+        `${rkShortGestor(gestorSel)} — ${curLabel} vs ${prevLabel}`, rows);
       const topC = topCorretoras(rows, 10);
       h2.textContent = 'Top Corretoras do Gestor';
-      s2.textContent = `Maiores produtoras de ${rkShortGestor(gestorSel)} em ${RANK_CUR_LABEL.split('/')[0]}`;
+      s2.textContent = `Maiores produtoras de ${rkShortGestor(gestorSel)} em ${curLabel.split('/')[0]}`;
       charts.rkEquipe = new Chart(document.getElementById('rankChartEquipe'), {
         type:'bar',
         data:{ labels: topC.map(r=>rkShortName(r.n)), datasets:[{ data: topC.map(r=>r._cur), backgroundColor:'#2E52D4', borderRadius:6, maxBarThickness:26 }] },
@@ -5677,7 +5690,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       // ---- Recorte: 1 EQUIPE (sem gestor) ----
       // Gráfico 1: gestores DESSA equipe (comparação interna, útil)
       h1.textContent = 'Gestores da Equipe';
-      s1.textContent = `Produção de cada gestor de ${equipeSel} em ${RANK_CUR_LABEL.split('/')[0]}`;
+      s1.textContent = `Produção de cada gestor de ${equipeSel} em ${curLabel.split('/')[0]}`;
       const byG = {}; rows.forEach(r=>{ byG[r.g]=(byG[r.g]||0)+r._cur; });
       const gArr = Object.entries(byG).sort((a,b)=>b[1]-a[1]);
       charts.rkGestor = new Chart(document.getElementById('rankChartGestor'), {
@@ -5688,7 +5701,7 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       // Gráfico 2: top corretoras da equipe (em vez da barra solitária)
       const topC = topCorretoras(rows, 10);
       h2.textContent = 'Top Corretoras da Equipe';
-      s2.textContent = `Maiores produtoras de ${equipeSel} em ${RANK_CUR_LABEL.split('/')[0]}`;
+      s2.textContent = `Maiores produtoras de ${equipeSel} em ${curLabel.split('/')[0]}`;
       charts.rkEquipe = new Chart(document.getElementById('rankChartEquipe'), {
         type:'bar',
         data:{ labels: topC.map(r=>rkShortName(r.n)), datasets:[{ data: topC.map(r=>r._cur), backgroundColor:'#16B87A', borderRadius:6, maxBarThickness:26 }] },
@@ -5720,13 +5733,19 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
   function rankShowDetail(codigo){
     const r = RANKDATA.find(x=>x.c===codigo);
     if (!r) return;
-    const d = r.cur - r.prev;
-    const dPct = r.prev>0 ? (d/r.prev*100) : null;
-    const totalMix = (r.ind||0)+(r.pim||0)+(r.mid||0)+(r.adm||0);
+    // Segue o "Mês de Referência" selecionado, não sempre o último importado — mesma fonte
+    // (rankValueForMonth) já usada pela tabela/gráficos, senão clicar numa linha vendo Agosto
+    // abriria o detalhe com os números de Setembro.
+    const v = rankValueForMonth(r, 't');
+    const curLabel = rankCurLabel(), prevLabel = rankPrevLabel();
+    const ind = rankValueForMonth(r,'ind').cur, pim = rankValueForMonth(r,'pim').cur, mid = rankValueForMonth(r,'mid').cur, adm = rankValueForMonth(r,'adm').cur;
+    const d = v.cur - v.prev;
+    const dPct = v.prev>0 ? (d/v.prev*100) : null;
+    const totalMix = ind+pim+mid+adm;
     const dCls = d>0?'#1b7a63':(d<0?'#F5364A':'#56608F');
     const dArrow = d>0?'▲':(d<0?'▼':'•');
-    const dTxt = r.prev===0 ? 'Novo no mês (não vendeu em '+RANK_PREV_LABEL.split('/')[0]+')'
-      : `${dArrow} ${d>=0?'+':''}${rkFmt(d)} vidas${dPct!==null?' ('+(dPct>=0?'+':'')+dPct.toFixed(0)+'%)':''} vs ${RANK_PREV_LABEL.split('/')[0]}`;
+    const dTxt = v.prev===0 ? 'Novo no mês (não vendeu em '+prevLabel.split('/')[0]+')'
+      : `${dArrow} ${d>=0?'+':''}${rkFmt(d)} vidas${dPct!==null?' ('+(dPct>=0?'+':'')+dPct.toFixed(0)+'%)':''} vs ${prevLabel.split('/')[0]}`;
 
     document.getElementById('rkmName').textContent = r.n;
     document.getElementById('rkmMeta').innerHTML = `<b>${r.e==='—'?'Sem equipe':r.e}</b> · ${r.g||'—'} · cód. ${r.c}`;
@@ -5742,19 +5761,19 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     document.getElementById('rkmBody').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
         <div class="rkm-stat-box" style="border:1px solid var(--line); border-radius:12px; padding:14px 16px;">
-          <div style="font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">${RANK_CUR_LABEL}</div>
-          <div style="font-size:28px; font-weight:800; color:var(--primary-light); letter-spacing:-.02em; margin-top:4px;">${rkFmt(r.cur)}</div>
+          <div style="font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">${curLabel}</div>
+          <div style="font-size:28px; font-weight:800; color:var(--primary-light); letter-spacing:-.02em; margin-top:4px;">${rkFmt(v.cur)}</div>
           <div style="font-size:11px; color:var(--muted);">vidas</div>
         </div>
         <div class="rkm-stat-box" style="border:1px solid var(--line); border-radius:12px; padding:14px 16px;">
-          <div style="font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">${RANK_PREV_LABEL}</div>
-          <div style="font-size:28px; font-weight:800; color:var(--muted); letter-spacing:-.02em; margin-top:4px;">${rkFmt(r.prev)}</div>
+          <div style="font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.4px;">${prevLabel}</div>
+          <div style="font-size:28px; font-weight:800; color:var(--muted); letter-spacing:-.02em; margin-top:4px;">${rkFmt(v.prev)}</div>
           <div style="font-size:11px; color:var(--muted);">vidas</div>
         </div>
       </div>
       <div style="text-align:center; font-size:13px; font-weight:800; color:${dCls}; padding:10px; background:${d>0?'rgba(22,184,122,.08)':(d<0?'rgba(245,54,74,.06)':'#f1f5f9')}; border-radius:10px; margin-bottom:20px;">${dTxt}</div>
-      <div style="font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px;">Mix de produto (${RANK_CUR_LABEL.split('/')[0]})</div>
-      ${totalMix>0 ? mixRow('Individual', r.ind||0, '#16B87A') + mixRow('PIM (3-29 vidas)', r.pim||0, '#2E52D4') + mixRow('Middle / PME', r.mid||0, '#F26B21') + mixRow('Administradora', r.adm||0, '#FFB81C') : '<div style="font-size:12px; color:var(--muted);">Sem detalhamento de produto neste mês.</div>'}`;
+      <div style="font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px;">Mix de produto (${curLabel.split('/')[0]})</div>
+      ${totalMix>0 ? mixRow('Individual', ind, '#16B87A') + mixRow('PIM (3-29 vidas)', pim, '#2E52D4') + mixRow('Middle / PME', mid, '#F26B21') + mixRow('Administradora', adm, '#FFB81C') : '<div style="font-size:12px; color:var(--muted);">Sem detalhamento de produto neste mês.</div>'}`;
 
     document.getElementById('rkModalOverlay').style.display = 'flex';
     // Achado 2026-09-04: o nome de corretora do extrato de vendas (aqui) e o do funil
@@ -5789,6 +5808,42 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     const total = y * 12 + (m - 1) + delta;
     return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
   };
+  // Mesmo índice que MONTH_LABELS/cmpMonthIndex usam (index 0 = Jan/2025) — não reaproveita
+  // cmpMonthIndex direto porque ele lê window.getCurrentMonth() sozinho, e aqui às vezes
+  // precisa calcular pra um mês diferente do selecionado (detectedMonth, na hora do import).
+  function rankMonthIndexOf(ym){
+    if (!ym) return -1;
+    const parts = String(ym).split('-');
+    const y = Number(parts[0]), m = Number(parts[1]);
+    if (!y || !m) return -1;
+    return (y - 2025) * 12 + (m - 1);
+  }
+  // "Mês de Referência" (dropdown global) == último mês de verdade importado pro Ranking?
+  // Se sim, usa os campos cur/prev "ao vivo" (mesmo comportamento de sempre). Se não (alguém
+  // escolheu um mês mais antigo), busca no histórico m[]/mc[] gravado por updateRankingData.
+  function rankIsLatestMonth(){
+    const sel = window.getCurrentMonth ? window.getCurrentMonth() : null;
+    const latest = window.getLatestKnownMonth ? window.getLatestKnownMonth() : null;
+    return !sel || !latest || sel === latest;
+  }
+  function rankValueForMonth(r, seg){
+    if (rankIsLatestMonth()){
+      return (seg && seg !== 't') ? {cur: r[seg]||0, prev: 0} : {cur: r.cur||0, prev: r.prev||0};
+    }
+    const idx = rankMonthIndexOf(window.getCurrentMonth ? window.getCurrentMonth() : null);
+    if (idx < 0) return (seg && seg !== 't') ? {cur: r[seg]||0, prev: 0} : {cur: r.cur||0, prev: r.prev||0};
+    if (seg && seg !== 't'){
+      const arr = r.mc && r.mc[seg];
+      return { cur: (arr && arr[idx]) || 0, prev: 0 };
+    }
+    return { cur: (r.m && r.m[idx]) || 0, prev: (r.m && r.m[idx-1]) || 0 };
+  }
+  function rankCurLabel(){
+    return rankIsLatestMonth() ? RANK_CUR_LABEL : mesLabel(window.getCurrentMonth());
+  }
+  function rankPrevLabel(){
+    return rankIsLatestMonth() ? RANK_PREV_LABEL : mesLabel(shiftMonth(window.getCurrentMonth(), -1));
+  }
 
   document.getElementById('rkmClose').addEventListener('click', ()=>{ document.getElementById('rkModalOverlay').style.display='none'; });
   document.getElementById('rkModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='rkModalOverlay') document.getElementById('rkModalOverlay').style.display='none'; });
@@ -6160,7 +6215,21 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
     // aparecer tudo"). Guarda o que já existia (RANKDATA anterior) pra não apagar o vínculo
     // numa importação comum (só sales, sem reanexar a Carteira).
     const existingAssByCode = {};
-    RANKDATA.forEach(r => { if (r.ass) existingAssByCode[r.c] = {ass: r.ass, acod: r.acod}; });
+    // Histórico mensal (m/mc) — achado 2026-09-04, pedido do Victor: trocar o "Mês de
+    // Referência" no dropdown não mudava nada no Ranking de Vendas, porque RANKDATA só
+    // guardava dois números por corretora (mês atual/anterior do último Extrato do BI
+    // importado) — o mês mais velho era descartado a cada import novo, sem ficar guardado
+    // em lugar nenhum. Agora cada linha ganha m[] (total por mês) e mc.ind/pim/mid/adm[]
+    // (mix por mês), mesmo padrão de índice que MONTH_LABELS/cmpMonthIndex já usam
+    // (index 0 = Jan/2025) — dá pra reaproveitar a lógica de mês já validada em vez de
+    // inventar outra. Carrega o que já existia (RANKDATA anterior) linha por código, senão
+    // cada import novo apagaria o histórico acumulado até aqui.
+    const existingRankByCode = {};
+    RANKDATA.forEach(r => {
+      if (r.ass) existingAssByCode[r.c] = {ass: r.ass, acod: r.acod};
+      existingRankByCode[r.c] = r;
+    });
+    const detectedIdx = detectedMonth ? rankMonthIndexOf(detectedMonth) : -1;
     const merged = [];
     codes.forEach(c => {
       const cu = curMap[c], pv = prevMap[c];
@@ -6173,11 +6242,27 @@ tfoot td{background:#EEF2FD;font-weight:800;font-size:9px;border-top:2px solid #
       } else if (existingAssByCode[c]){
         ass = existingAssByCode[c].ass; acod = existingAssByCode[c].acod;
       }
+      const curVal = cu ? Math.round(cu.t*10)/10 : 0;
+      const prevVal = pv ? Math.round(pv.t*10)/10 : 0;
+      const old = existingRankByCode[c];
+      const m = (old && old.m) ? old.m.slice() : [];
+      const mc = (old && old.mc) ? {ind:(old.mc.ind||[]).slice(), pim:(old.mc.pim||[]).slice(), mid:(old.mc.mid||[]).slice(), adm:(old.mc.adm||[]).slice()} : {ind:[], pim:[], mid:[], adm:[]};
+      if (detectedIdx >= 0){
+        m[detectedIdx] = curVal;
+        mc.ind[detectedIdx] = cu ? (cu.ind||0) : 0;
+        mc.pim[detectedIdx] = cu ? (cu.pim||0) : 0;
+        mc.mid[detectedIdx] = cu ? (cu.mid||0) : 0;
+        mc.adm[detectedIdx] = cu ? (cu.adm||0) : 0;
+        // Preenche o mês anterior só se ainda não tinha nada gravado ali (não sobrescreve
+        // histórico de verdade com o total mais pobre que "prev" carrega, sem mix).
+        const pIdx = detectedIdx - 1;
+        if (pIdx >= 0 && (m[pIdx] === undefined || m[pIdx] === null)) m[pIdx] = prevVal;
+      }
       merged.push({
         c, n: base.n || '', g, e: GESTOR_EQUIPE[g] || '—', ass, acod,
-        cur: cu ? Math.round(cu.t*10)/10 : 0,
-        prev: pv ? Math.round(pv.t*10)/10 : 0,
+        cur: curVal, prev: prevVal,
         ind: cu ? cu.ind : 0, pim: cu ? cu.pim : 0, mid: cu ? cu.mid : 0, adm: cu ? cu.adm : 0,
+        m, mc,
       });
     });
     merged.sort((a,b)=>b.cur-a.cur);
